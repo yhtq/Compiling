@@ -1,0 +1,97 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.39.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           Compiling
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/Compiling#readme>
+homepage:       https://github.com/githubuser/Compiling#readme
+bug-reports:    https://github.com/githubuser/Compiling/issues
+author:         yhtq
+maintainer:     yhtq@example.com
+copyright:      2026 yhtq
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/Compiling
+
+library
+  exposed-modules:
+      Effect
+      Lexer
+      Lib
+      Stream
+  other-modules:
+      Paths_Compiling
+  autogen-modules:
+      Paths_Compiling
+  hs-source-dirs:
+      src
+  default-extensions:
+      LambdaCase, OverloadedStrings, DerivingStrategies, DataKinds, TypeFamilies, BlockArguments, FunctionalDependencies, RecordWildCards, DefaultSignatures, PatternSynonyms, TemplateHaskell, PartialTypeSignatures, AllowAmbiguousTypes, DuplicateRecordFields, OverloadedRecordDot, LambdaCase, ImplicitParams
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , co-log
+    , data-effects-core
+    , heftia-effects
+    , hspec
+    , text
+    , vector
+  default-language: GHC2024
+
+executable Compiling-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_Compiling
+  autogen-modules:
+      Paths_Compiling
+  hs-source-dirs:
+      app
+  default-extensions:
+      LambdaCase, OverloadedStrings, DerivingStrategies, DataKinds, TypeFamilies, BlockArguments, FunctionalDependencies, RecordWildCards, DefaultSignatures, PatternSynonyms, TemplateHaskell, PartialTypeSignatures, AllowAmbiguousTypes, DuplicateRecordFields, OverloadedRecordDot, LambdaCase, ImplicitParams
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Compiling
+    , QuickCheck
+    , base >=4.7 && <5
+    , co-log
+    , data-effects-core
+    , heftia-effects
+    , hspec
+    , text
+    , vector
+  default-language: GHC2024
+
+test-suite Compiling-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_Compiling
+  autogen-modules:
+      Paths_Compiling
+  hs-source-dirs:
+      test
+  default-extensions:
+      LambdaCase, OverloadedStrings, DerivingStrategies, DataKinds, TypeFamilies, BlockArguments, FunctionalDependencies, RecordWildCards, DefaultSignatures, PatternSynonyms, TemplateHaskell, PartialTypeSignatures, AllowAmbiguousTypes, DuplicateRecordFields, OverloadedRecordDot, LambdaCase, ImplicitParams
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Compiling
+    , QuickCheck
+    , base >=4.7 && <5
+    , co-log
+    , data-effects-core
+    , heftia-effects
+    , hspec
+    , text
+    , vector
+  default-language: GHC2024
