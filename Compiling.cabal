@@ -27,6 +27,7 @@ library
   exposed-modules:
       Effect
       Lexer
+      LexerSpec
       Lib
       Stream
   other-modules:

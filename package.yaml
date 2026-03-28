@@ -61,6 +61,10 @@ ghc-options:
 
 library:
   source-dirs: src
+  # exposed-modules:
+  #   Effect,
+  #   Lexer,
+  #   Stream
 
 executables:
   Compiling-exe:
