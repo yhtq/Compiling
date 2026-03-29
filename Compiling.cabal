@@ -44,6 +44,7 @@ library
     , base >=4.7 && <5
     , co-log
     , data-effects-core
+    , hashmap
     , heftia-effects
     , hspec
     , text
@@ -67,6 +68,7 @@ executable Compiling-exe
     , base >=4.7 && <5
     , co-log
     , data-effects-core
+    , hashmap
     , heftia-effects
     , hspec
     , text
@@ -91,6 +93,7 @@ test-suite Compiling-test
     , base >=4.7 && <5
     , co-log
     , data-effects-core
+    , hashmap
     , heftia-effects
     , hspec
     , text

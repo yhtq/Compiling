@@ -28,6 +28,7 @@ dependencies:
 - co-log
 - hspec
 - QuickCheck
+- hashmap
 
 language: GHC2024
 default-extensions: LambdaCase,
