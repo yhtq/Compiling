@@ -68,7 +68,7 @@ compiler-check: newer-minor
 nix:
 
   # false by default, except on NixOS. Is Nix integration enabled?
-  enable: false
+  enable: true
 
   # true by default. Should Nix run in a pure shell?
   pure: true

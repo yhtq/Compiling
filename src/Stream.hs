@@ -29,8 +29,6 @@ class Stream s where
     fromList :: [Token s] -> Tokens s
     toList :: Tokens s -> [Token s]
 
-type TokenConstraints s = (Show (Token s), Eq (Token s))
-type TokensConstraints s = (Show (Tokens s), Eq (Tokens s))
 
 isEmpty :: Stream s => s -> Bool
 isEmpty = isNothing . uncons 

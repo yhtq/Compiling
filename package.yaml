@@ -29,6 +29,8 @@ dependencies:
 - hspec
 - QuickCheck
 - hashmap
+- unicode-show
+- containers
 
 language: GHC2024
 default-extensions: LambdaCase,

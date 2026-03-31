@@ -5,6 +5,7 @@ import Lexer
 import qualified Data.Text as T
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
+import Data.Coerce (coerce)
 
 intToLittleEnd :: Int -> [Char]
 intToLittleEnd = show
@@ -36,8 +37,8 @@ charSpec = it "char should parse the expected character" $
             let parser = char c in 
             let result = runSimpleLexer parser initStream in
             case result of
-                Left _ -> property False
-                Right (TextStream (_, pos), parsedChar) -> 
+                (_, Left _) -> property False
+                (TextStream (_, pos), Right parsedChar) -> 
                     conjoin [
                         counterexample ("parsed char: " ++ show parsedChar ++ ", expected: " ++ show c) $ parsedChar == c,
                         counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 2)) 
@@ -54,12 +55,12 @@ digitsSpec = it "digits should parse valid digits according to the base" $
                 then '-' : toLittleEnd (-x)
                 else showIntAtBase base intToDigit x "" in
             \(x :: Int) -> 
-                let initStream = fromText (T.pack (toLittleEnd x)) in
+                let initStream = fromText ("啊" <> T.pack (toLittleEnd x)) in
                 let parser = parseInt in 
                 let result = runSimpleLexer parser initStream in
                 case result of
-                    Left _ -> property False
-                    Right (TextStream (_, pos), parsedInt) -> 
+                    (_, Left e) -> counterexample ("parsing error: " ++ T.unpack (coerce e)) $ property False
+                    (TextStream (_, pos), Right parsedInt) -> 
                         conjoin [
                             counterexample ("parsed int: " ++ show parsedInt ++ ", expected: " ++ show x) $ parsedInt == x,
                             counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 (length (toLittleEnd x) + 1))) 

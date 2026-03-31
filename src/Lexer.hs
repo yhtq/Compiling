@@ -18,6 +18,7 @@ import Data.HashSet (Set)
 import qualified Data.HashSet as HS
 import Data.HashMap (Map)
 import Stream (TokensConstraints)
+import Data.Coerce (coerce)
 
 -- 从 1 开始计数
 data Position = Position
@@ -65,13 +66,56 @@ instance S.Stream TextStream where
             else
                 (t, TextStream (V.cons r rest, advanceColumns n pos))
         Nothing -> ("", TextStream (V.empty, pos))
+    fromList = T.pack
+    toList = T.unpack
 
-newtype LexerError = LexerError Text deriving (Show, Eq, IsString)
+newtype LexerError = LexerError Text deriving (Show, Eq, IsString, Semigroup, Monoid)
+
+showPos :: Position -> Text
+showPos pos = T.pack (show (column pos) ++ ":" ++ show (line pos))
+
 type LexerEff es a = ParseEff TextStream LexerError es a
-type SimpleLexer a = ParseEff TextStream LexerError '[ParserST TextStream, Hefty.Throw LexerError] a
+type SimpleLexer a = ParseEff TextStream LexerError '[CallingStackE, Hefty.Throw LexerError, Hefty.State [(Position, CallingStack)], ParserST TextStream] a
 
-runSimpleLexer :: SimpleLexer a -> TextStream -> Either LexerError (TextStream, a)
-runSimpleLexer peff initState = runPureParseEff $ runThrow $ runParserST peff initState
+runCallingStackEWithLoc :: (ParserST TextStream :> es, HasParserCallingStack es, Hefty.State [(Position, CallingStack)] :> es) => ParseEff s err (CallingStackE : es) a -> ParseEff s err es a
+runCallingStackEWithLoc = ParseEff . Hefty.interpret (\case
+            Push st -> do
+                stacks :: [(Position, CallingStack)] <- Hefty.get
+                pos <- asEff getPos
+                Hefty.put (stacks <> [(pos, st)])
+                return ()
+            Pop -> do
+                stacks :: [(Position, CallingStack)] <- Hefty.get
+                case stacks of
+                    [] -> return "Error stack"
+                    (h: t) -> do
+                        Hefty.put t
+                        return (snd h)
+        ) . asEff
+
+-- callingStackWithLoc :: (ParserST TextStream :> es) =>  Hefty.Eff (Hefty.State CallingStacks : es) a -> Hefty.Eff (Hefty.State (Position, CallingStack) :es) a
+
+runThrowWithLoc :: (Hefty.FOEs es, ParserST TextStream :> es) => LexerEff (Hefty.Throw LexerError : es) a -> LexerEff es (Either LexerError a)
+runThrowWithLoc p = do
+    result <- runThrow p
+    (TextStream (oriTs, _)) <- getParserState
+    endPos <- getPos
+    case result of
+        Left e -> do
+            showLine <- case oriTs V.!? (line endPos - 1) of
+                Just line -> return line
+                Nothing -> return "EOF"
+            let message = T.intercalate "\n" [
+                    "At " <> showPos endPos <> ": ",
+                    "    " <> showLine,
+                    "    " <> T.replicate (column endPos - 1) " " <> "^",
+                    "   Lexer error: " <> coerce e
+                    ]
+            return $ Left (LexerError message)
+        Right r -> return $ Right r
+
+runSimpleLexer :: SimpleLexer a -> TextStream -> (TextStream, Either LexerError a)
+runSimpleLexer peff initState = runPureParseEff $ runParserST (runThrowWithLoc peff) initState
 
 colPos :: (ParserST TextStream :> es) => LexerEff es Position
 colPos = do
@@ -83,7 +127,7 @@ linePos = do
     TextStream (_, pos) <- getParserState
     return $ line pos
 
-getPos :: (ParserST TextStream :> es) => LexerEff es Position
+getPos :: (ParserST TextStream :> es) => ParseEff TextStream err es Position
 getPos = do
     TextStream (_, pos) <- getParserState
     return pos
@@ -113,8 +157,8 @@ bigEnd = foldr (\c acc -> acc * ?base + digitToInt c) 0
 littleEnd :: (?base :: Int) => [Char] -> Int
 littleEnd = foldl (\acc c -> acc * ?base + digitToInt c) 0
 
-parseInt :: forall s err es. (ParseEffConstraints s err es, S.Stream s, S.Token s ~ Char, ?base :: Int) => ParseEff s err es Int
-parseInt = do
+parseInt :: forall s err es. (HasParserCallingStack es, ParseEffConstraints s err es, S.Stream s, S.Token s ~ Char, ?base :: Int) => ParseEff s err es Int
+parseInt = withCallingStack "parseInt" $ do
     sign <- optional (satisfy_ (\c -> c == '+' || c == '-'))
     ds <- digits
     case sign of
@@ -146,13 +190,6 @@ data LexerConfig s = LexerConfig
         spaceChars :: Set Char -- 需要跳过的空白字符集合
     } 
 
-data Lexcial = LineComment 
-    | BlockComment 
-    | NumericLiteral Int
-    | StringLiteral Text
-    | Space
-    deriving (Show, Eq)
-
 
 skipSpace :: (ParseEffConstraints s err es, S.Stream s, S.Token s ~ Char) => Set Char -> ParseEff s err es ()
 skipSpace spaceChars = void $ takeWhileP (`HS.member` spaceChars)
@@ -171,9 +208,9 @@ skipBlockComment start end startCharOfEnd = do
                 Right _ -> return ()
                 Left _ -> aux
     aux
-parseStringLiteral :: (ParseEffConstraints s err es, S.Stream s, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
+parseStringLiteral :: (HasParserCallingStack es, ParseEffConstraints s err es, S.Stream s, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
     => S.Tokens s -> S.Tokens s -> S.Token s -> ParseEff s err es (S.Tokens s)
-parseStringLiteral start end startCharOfEnd = do
+parseStringLiteral start end startCharOfEnd = withCallingStack "parseStringLiteral" $ do
     tokens start
     let aux acc = do
             c <- takeWhileP (/= startCharOfEnd)
@@ -184,12 +221,20 @@ parseStringLiteral start end startCharOfEnd = do
                     aux (acc <> c)
     aux mempty
 
-parseIdentifier :: forall s err es. (ParseEffConstraints s err es, S.Stream s, Show (S.Token s), Monoid (S.Tokens s)) 
+parseIdentifier :: forall s err es. (HasParserCallingStack es, ParseEffConstraints s err es, S.Stream s, Show (S.Token s), Monoid (S.Tokens s)) 
     => (S.Token s -> Bool) -> (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
-parseIdentifier isStart isPart = do
+parseIdentifier isStart isPart = withCallingStack "parseIdentifier" $ do
     firstChar <- satisfy_ isStart
     rest <- takeWhileP isPart
     return $ S.fromList @s [firstChar] <> rest
+
+data Lexcial = LineComment 
+    | BlockComment 
+    | NumericLiteral Int
+    | StringLiteral Text
+    | Identifier Text
+    | Space
+    deriving (Show, Eq)
 
 -- -- 这里的 int 是向前看的最大标记长度
 -- genLLParsers :: LexerConfig -> (Int, Map Text (LexerEff es ()))

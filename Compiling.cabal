@@ -26,10 +26,12 @@ source-repository head
 library
   exposed-modules:
       Effect
+      Exception
       Lexer
       LexerSpec
       Lib
       Stream
+      Text
   other-modules:
       Paths_Compiling
   autogen-modules:
@@ -43,11 +45,13 @@ library
       QuickCheck
     , base >=4.7 && <5
     , co-log
+    , containers
     , data-effects-core
     , hashmap
     , heftia-effects
     , hspec
     , text
+    , unicode-show
     , vector
   default-language: GHC2024
 
@@ -67,11 +71,13 @@ executable Compiling-exe
     , QuickCheck
     , base >=4.7 && <5
     , co-log
+    , containers
     , data-effects-core
     , hashmap
     , heftia-effects
     , hspec
     , text
+    , unicode-show
     , vector
   default-language: GHC2024
 
@@ -92,10 +98,12 @@ test-suite Compiling-test
     , QuickCheck
     , base >=4.7 && <5
     , co-log
+    , containers
     , data-effects-core
     , hashmap
     , heftia-effects
     , hspec
     , text
+    , unicode-show
     , vector
   default-language: GHC2024
