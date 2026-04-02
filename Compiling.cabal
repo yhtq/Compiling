@@ -30,8 +30,10 @@ library
       Lexer
       LexerSpec
       Lib
+      Printer
       Stream
       Text
+      Utils
   other-modules:
       Paths_Compiling
   autogen-modules:
@@ -47,9 +49,12 @@ library
     , co-log
     , containers
     , data-effects-core
+    , fmt
     , hashmap
     , heftia-effects
     , hspec
+    , prettyprinter
+    , prettyprinter-ansi-terminal
     , text
     , unicode-show
     , vector
@@ -73,9 +78,12 @@ executable Compiling-exe
     , co-log
     , containers
     , data-effects-core
+    , fmt
     , hashmap
     , heftia-effects
     , hspec
+    , prettyprinter
+    , prettyprinter-ansi-terminal
     , text
     , unicode-show
     , vector
@@ -100,9 +108,12 @@ test-suite Compiling-test
     , co-log
     , containers
     , data-effects-core
+    , fmt
     , hashmap
     , heftia-effects
     , hspec
+    , prettyprinter
+    , prettyprinter-ansi-terminal
     , text
     , unicode-show
     , vector

@@ -49,28 +49,28 @@ deriving instance Functor (ParseEff s err es)
 deriving instance Applicative (ParseEff s err es)
 deriving instance Monad (ParseEff s err es)
 
--- newtype CallingStack = CallingStack T.Text deriving (Show, Eq, IsString, Semigroup, Monoid)
--- type CallingStacks = [CallingStack]
+-- newtype CallStack = CallStack T.Text deriving (Show, Eq, IsString, Semigroup, Monoid)
+-- type CallStacks = [CallStack]
 
--- type HasParserCallingStack es = CallingStackE :> es
+-- type HasParserCallStack es = CallStackE :> es
 
--- data CallingStackE :: Effect where
---     Push :: CallingStack -> CallingStackE f ()
---     Pop :: CallingStackE f ()
--- makeEffectF ''CallingStackE
+-- data CallStackE :: Effect where
+--     Push :: CallStack -> CallStackE f ()
+--     Pop :: CallStackE f ()
+-- makeEffectF ''CallStackE
 
 
--- pushCallingStack :: (HasParserCallingStack es) => CallingStack -> ParseEff s err es ()
--- pushCallingStack cs = ParseEff $ Hefty.perform (Push cs)
+-- pushCallStack :: (HasParserCallStack es) => CallStack -> ParseEff s err es ()
+-- pushCallStack cs = ParseEff $ Hefty.perform (Push cs)
 
--- popCallingStack :: (HasParserCallingStack es) => ParseEff s err es ()
--- popCallingStack = ParseEff $ Hefty.perform Pop
+-- popCallStack :: (HasParserCallStack es) => ParseEff s err es ()
+-- popCallStack = ParseEff $ Hefty.perform Pop
 
--- withCallingStack :: (HasParserCallingStack es) => CallingStack -> ParseEff s err es a -> ParseEff s err es a
--- withCallingStack cs p = do
---     pushCallingStack cs 
+-- withCallStack :: (HasParserCallStack es) => CallStack -> ParseEff s err es a -> ParseEff s err es a
+-- withCallStack cs p = do
+--     pushCallStack cs 
 --     result <- p
---     _ <- popCallingStack
+--     _ <- popCallStack
 --     return result
 
 

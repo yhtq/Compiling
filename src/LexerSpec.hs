@@ -6,6 +6,9 @@ import qualified Data.Text as T
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
 import Data.Coerce (coerce)
+import qualified Prettyprinter as PP
+import qualified Prettyprinter.Render.String as PP
+import Utils 
 
 intToLittleEnd :: Int -> [Char]
 intToLittleEnd = show
@@ -59,7 +62,7 @@ digitsSpec = it "digits should parse valid digits according to the base" $
                 let parser = parseInt in 
                 let result = runSimpleLexer parser initStream in
                 case result of
-                    (_, Left e) -> counterexample ("parsing error: " ++ T.unpack (coerce e)) $ property False
+                    (_, Left e) -> counterexample ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) (PP.vsep ["Lexer error: ", e])) $ property False
                     (TextStream (_, pos), Right parsedInt) -> 
                         conjoin [
                             counterexample ("parsed int: " ++ show parsedInt ++ ", expected: " ++ show x) $ parsedInt == x,

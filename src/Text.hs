@@ -17,6 +17,8 @@ instance IsText String where
 
 class TShow a where
     tshow :: a -> Text
+instance TShow Char where
+    tshow = T.singleton
 instance TShow Text where
     tshow = id
 instance TShow String where

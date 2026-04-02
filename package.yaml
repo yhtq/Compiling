@@ -31,6 +31,9 @@ dependencies:
 - hashmap
 - unicode-show
 - containers
+- prettyprinter
+- prettyprinter-ansi-terminal
+- fmt
 
 language: GHC2024
 default-extensions: LambdaCase,
