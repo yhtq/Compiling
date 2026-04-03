@@ -29,6 +29,8 @@ import qualified Data.Text as T
 import qualified Exception as E
 import Exception (StatefulThrow)
 import qualified Data.Tree as T
+import Control.Monad.Hefty.Input (Input)
+import qualified Control.Monad.Hefty.Input as Hefty
 
 newtype ParserST s f a = ParserST (State s f a)
 type instance Hefty.OrderOf (ParserST s) = Hefty.OrderOf (State s)
@@ -275,15 +277,15 @@ satisfy p = withInStack' "satisfy" $ do
 satisfy_ :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Token s)
 satisfy_ p = withInStack' "satisfy" $ do
     s <- getParserState
-    case S.head s of
-        Just t | p t -> do
-            putParserState (S.tail s)
+    case S.uncons s of
+        Just (t, rest) | p t -> do
+            putParserState rest
             return t
         _ -> throw $ fromText ("Unexpected token: " <> tshow (S.head s))
 
 {-# INLINE[2] anyOf #-}
 anyOf :: (ParseEffFOEConstraints s st err es) => [ParseEff s err es a] -> ParseEff s err es a
-anyOf = withInStack' "anyOf" . asum
+anyOf = asum
 
 {-# RULES 
 "anyOf satisfy_" forall pl. anyOf (map satisfy_ pl) = satisfy_ (\x -> any (x &) pl)
@@ -332,3 +334,10 @@ takeWhileP1 p = satisfy_ p >> takeWhileP p
 takeWhileP1' :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
 takeWhileP1' p = fmap (S.toList @s) (takeWhileP1 p)
 
+-- Coroutine version of `many`, used for fusion different passes
+{-# INLINE stream #-}
+stream :: (Hefty.Suffix es es') =>
+    ParseEff s err es a -> ParseEff s err (Input a : es') x -> ParseEff s err es' x
+stream p = ParseEff . Hefty.interpret (
+        \Hefty.Input -> Hefty.raises $ asEff p
+    ) . asEff 

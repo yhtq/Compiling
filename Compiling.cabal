@@ -28,7 +28,6 @@ library
       Effect
       Exception
       Lexer
-      LexerSpec
       Lib
       Printer
       Stream
@@ -93,6 +92,7 @@ test-suite Compiling-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      LexerSpec
       Paths_Compiling
   autogen-modules:
       Paths_Compiling

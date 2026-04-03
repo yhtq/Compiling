@@ -8,7 +8,13 @@ import Data.Char (intToDigit)
 import Data.Coerce (coerce)
 import qualified Prettyprinter as PP
 import qualified Prettyprinter.Render.String as PP
-import Utils 
+import Utils
+import Data.Text (Text)
+import Printer (Doc)
+import GHC.Exception (throw)
+import Control.Exception (AssertionFailed(AssertionFailed))
+import qualified Data.Vector as V
+import Lexer 
 
 intToLittleEnd :: Int -> [Char]
 intToLittleEnd = show
@@ -18,7 +24,7 @@ intToBigEnd = reverse . show
 
 littleEndSpec :: Spec
 littleEndSpec = it "littleEnd should be the inverse of intToLittleEnd" $
-    property $ \x -> let ?base = 10 in 
+    property $ \x -> let ?base = 10 in
         if x >= 0 then
             littleEnd (intToLittleEnd x) == x
         else
@@ -26,7 +32,7 @@ littleEndSpec = it "littleEnd should be the inverse of intToLittleEnd" $
 
 bigEndSpec :: Spec
 bigEndSpec = it "bigEnd should be the inverse of intToBigEnd" $
-    property $ \x -> let ?base = 10 in 
+    property $ \x -> let ?base = 10 in
         if x >= 0 then
             bigEnd (intToBigEnd x) == x
         else
@@ -37,14 +43,14 @@ charSpec = it "char should parse the expected character" $
     property $ conjoin $ map (
         \c ->
             let initStream = fromText (T.singleton c) in
-            let parser = char c in 
+            let parser = char c in
             let result = runSimpleLexer parser initStream in
             case result of
                 (_, Left _) -> property False
-                (TextStream (_, pos), Right parsedChar) -> 
+                (TextStream (_, pos), Right parsedChar) ->
                     conjoin [
                         counterexample ("parsed char: " ++ show parsedChar ++ ", expected: " ++ show c) $ parsedChar == c,
-                        counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 2)) 
+                        counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 2))
                             $ pos == Position 1 2
                     ]
         ) ['a', 'Z', '0', '9', '啊']
@@ -52,21 +58,43 @@ charSpec = it "char should parse the expected character" $
 digitsSpec :: Spec
 digitsSpec = it "digits should parse valid digits according to the base" $
     property $ conjoin $ map (
-        \base -> 
+        \base ->
             let ?base = base in
-            let toLittleEnd x = if x < 0 
+            let toLittleEnd x = if x < 0
                 then '-' : toLittleEnd (-x)
                 else showIntAtBase base intToDigit x "" in
-            \(x :: Int) -> 
-                let initStream = fromText ("啊" <> T.pack (toLittleEnd x)) in
-                let parser = parseInt in 
+            \(x :: Int) ->
+                let initStream = fromText (T.pack (toLittleEnd x)) in
+                let parser = parseInt in
                 let result = runSimpleLexer parser initStream in
                 case result of
                     (_, Left e) -> counterexample ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) (PP.vsep ["Lexer error: ", e])) $ property False
-                    (TextStream (_, pos), Right parsedInt) -> 
+                    (TextStream (_, pos), Right parsedInt) ->
                         conjoin [
                             counterexample ("parsed int: " ++ show parsedInt ++ ", expected: " ++ show x) $ parsedInt == x,
-                            counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 (length (toLittleEnd x) + 1))) 
+                            counterexample ("position: " ++ show pos ++ ", expected: " ++ show (Position 1 (length (toLittleEnd x) + 1)))
                                 $ pos == Position 1 (length (toLittleEnd x) + 1)
                             ]
     ) [2, 8, 10, 16]
+
+testLexer :: HasCallStack => Text -> [Located (Lexcial TextStream)] -> Expectation
+testLexer input expected =
+    let initStream = fromText input
+        parser = lexer defaultLexerConfig in
+    case snd (runSimpleLexer parser initStream) of
+        Left e -> throw $ AssertionFailed ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) e)
+        Right tokens -> tokens `shouldBe` expected
+
+
+lexerSpec :: Spec
+lexerSpec = describe "Lexer tests" $ do
+    it "fromText test" $ fromText "aaa \n bbb" `shouldBe` TextStream (V.fromList ["aaa \n", " bbb\n"], Position 1 1)
+    it "should parse a simple line comment" $
+        testLexer "-- this is a comment\n 100 _a啊121bc" [
+            Located (LineComment, (Position 1 1, Position 1 21)),
+            Located (Space, (Position 2 1, Position 2 1)),
+            Located (NumericLiteral 100, (Position 2 2, Position 2 4)),
+            Located (Space, (Position 2 5, Position 2 5)),
+            Located (Identifier "_a啊121bc", (Position 2 6, Position 2 13)),
+            Located (NewLine, (Position 2 14,Position 2 14))
+            ]

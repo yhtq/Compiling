@@ -32,3 +32,5 @@ instance (TShow a) => TShow [a] where
 instance (TShow a) => TShow (Maybe a) where
     tshow Nothing = "Nothing"
     tshow (Just x) = "Just " <> tshow x
+instance TShow Int where
+    tshow = T.pack . show

@@ -48,9 +48,7 @@ instance Stream (V.Vector a) where
     takeN_ n v = let (t, r) = V.splitAt n v in (t, r)
     fromList = V.fromList
     toList = V.toList
-    -- elemAt i v = if i < V.length v then Just (v V.! i) else Nothing
-    -- toVector = id
-    -- fromVector = id
+
 
 instance Stream T.Text where
     {-# INLINE uncons #-}

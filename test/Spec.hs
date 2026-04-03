@@ -37,6 +37,7 @@ main =
     bigEndSpec
     charSpec
     digitsSpec
+    lexerSpec
     -- it "throws an exception if used with an empty list" $ do
     --   evaluate (head []) `shouldThrow` anyException
   -- describe "read" $ do
