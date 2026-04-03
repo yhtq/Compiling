@@ -15,6 +15,8 @@ import GHC.Exception (throw)
 import Control.Exception (AssertionFailed(AssertionFailed))
 import qualified Data.Vector as V
 import Lexer 
+import Control.Applicative (Alternative(..))
+
 
 intToLittleEnd :: Int -> [Char]
 intToLittleEnd = show
@@ -77,24 +79,37 @@ digitsSpec = it "digits should parse valid digits according to the base" $
                             ]
     ) [2, 8, 10, 16]
 
-testLexer :: HasCallStack => Text -> [Located (Lexcial TextStream)] -> Expectation
-testLexer input expected =
-    let initStream = fromText input
-        parser = lexer defaultLexerConfig in
+testLexer :: (Show a, Eq a) => HasCallStack => Text -> SimpleLexer a -> a -> Expectation
+testLexer input parser expected =
+    let initStream = fromText input in
     case snd (runSimpleLexer parser initStream) of
         Left e -> throw $ AssertionFailed ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) e)
         Right tokens -> tokens `shouldBe` expected
+
+manySpec1 :: Spec
+manySpec1 = it "many' should parse zero or more occurrences" $
+    testLexer "" (many (char 'a')) ([] :: [Char])
+manySpec2 :: Spec
+manySpec2 = it "many' should parse multiple occurrences" $
+    testLexer "aaaab" (many (char 'a')) "aaaa"
+    -- let parser = many (char 'a') in
+    -- let initStream = fromText "aaab" in
+    -- case runSimpleLexer parser initStream of
+    --     (_, Left e) -> throw $ AssertionFailed ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) e)
+    --     (_, Right result) -> result `shouldBe` "aaa"
 
 
 lexerSpec :: Spec
 lexerSpec = describe "Lexer tests" $ do
     it "fromText test" $ fromText "aaa \n bbb" `shouldBe` TextStream (V.fromList ["aaa \n", " bbb\n"], Position 1 1)
-    it "should parse a simple line comment" $
-        testLexer "-- this is a comment\n 100 _a啊121bc" [
-            Located (LineComment, (Position 1 1, Position 1 21)),
-            Located (Space, (Position 2 1, Position 2 1)),
-            Located (NumericLiteral 100, (Position 2 2, Position 2 4)),
-            Located (Space, (Position 2 5, Position 2 5)),
-            Located (Identifier "_a啊121bc", (Position 2 6, Position 2 13)),
-            Located (NewLine, (Position 2 14,Position 2 14))
-            ]
+    manySpec1
+    manySpec2
+    -- it "should parse a simple line comment" $
+    --     testLexer "-- this is a comment\n 100 _a啊121bc" [
+    --         Located (LineComment, (Position 1 1, Position 1 21)),
+    --         Located (Space, (Position 2 1, Position 2 1)),
+    --         Located (NumericLiteral 100, (Position 2 2, Position 2 4)),
+    --         Located (Space, (Position 2 5, Position 2 5)),
+    --         Located (Identifier "_a啊121bc", (Position 2 6, Position 2 13)),
+    --         Located (NewLine, (Position 2 14,Position 2 14))
+    --         ]

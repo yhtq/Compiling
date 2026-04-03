@@ -7,8 +7,6 @@ import GHC.Unicode (isOctDigit, isDigit, isHexDigit, isSpace, isAlpha, isAlphaNu
 import Control.Monad.Hefty ((:>))
 import qualified Control.Monad.Hefty as Hefty
 import Control.Monad (void)
-import Data.HashSet (Set)
-import qualified Data.HashSet as HS
 import Exception (MultiThrow)
 import Printer
 import Utils
@@ -18,12 +16,14 @@ import Data.String (IsString)
 import Data.Char (digitToInt)
 import Data.Text (unpack)
 import qualified Data.Text as T
+import Prettyprinter (Pretty)
+import qualified Utils as S
 
 type LexerEff es a = ParseEff TextStream LexerError es a
 
 -- effect stack needed for lexing
 type LexerES = '[
-        MultiThrow (LexerError, Position), Hefty.Ask Position, SourceViewer,  ParserST TextStream
+       S.Stream TextStream TextStream, MultiThrow (LexerError, Position), Hefty.Ask Position, SourceViewer, ParserST TextStream
     ]
 type SimpleLexer a = ParseEff TextStream LexerError LexerES a
 
@@ -37,12 +37,12 @@ linePos :: (Hefty.Ask Position :> es) => ParseEff s err es Position
 linePos = fmap (\(Position l _) -> Position l 1) getPos
 
 
-runStatefulThrowWithLoc :: (Hefty.FOEs es, HasSourceViewer es) => LexerEff (MultiThrow (LexerError, Position) : es) a -> LexerEff es (Either Doc a)
+runStatefulThrowWithLoc :: (Hefty.FOEs es, HasSourceViewer es, Pretty e) => LexerEff (MultiThrow (e, Position) : es) a -> LexerEff es (Either Doc a)
 runStatefulThrowWithLoc p = do
     result <- runThrow p
     case result of
         Left errorTree -> do
-            let errorTree1 = fmap (fmap (\(LexerError e, pos) -> (pretty e, (pos, pos)))) errorTree
+            let errorTree1 = fmap (fmap (\(e, pos) -> (pretty e, (pos, pos)))) errorTree
             msg <- printErrorForestE errorTree1
             return $ Left msg
         Right r -> return $ Right r
@@ -57,18 +57,18 @@ runSimpleLexer :: SimpleLexer a -> TextStream -> (TextStream, Either Doc a)
 runSimpleLexer peff initState@(TextStream (sources, _)) = 
     runPureParseEff $ 
     runParserST (
-        ((ParseEff . Hefty.runAsk sources . asEff) . runPositionAsk . runStatefulThrowWithLoc) peff
+        ((ParseEff . Hefty.runAsk sources . asEff) . runPositionAsk . runStatefulThrowWithLoc . S.runPureStreamInState) peff
     ) initState
 
 
-char :: (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char) => Char -> ParseEff s err es Char
+char :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char) => Char -> ParseEff s err es Char
 char c = satisfy_ (== c) 
 
-newline :: (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char) => ParseEff s err es ()
+newline :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char) => ParseEff s err es ()
 newline = void $ satisfy_ isNewline 
 
 -- 根据 base 解析一位或多位整数，base 只能是 2, 8, 10, 16，否则永远失败
-digits :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char, ?base :: Int) => ParseEff s err es [Char]
+digits :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, ?base :: Int) => ParseEff s err es [Char]
 digits = do
     let _isDigit c = case ?base of
             2 -> c == '0' || c == '1'
@@ -86,10 +86,10 @@ bigEnd = foldr (\c acc -> acc * ?base + digitToInt c) 0
 littleEnd :: (?base :: Int) => [Char] -> Int
 littleEnd = foldl (\acc c -> acc * ?base + digitToInt c) 0
 
-parseInt :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char, ?base :: Int) => ParseEff s err es Int
+parseInt :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, ?base :: Int) => ParseEff s err es Int
 parseInt = withInStack' "parseInt" $ do
-    sign <- optional (satisfy_ (\c -> c == '+' || c == '-'))
-    ds <- digits
+    sign <- withInStack' "sign" $ optional (satisfy_ (\c -> c == '+' || c == '-'))
+    ds <- withInStack' "digits" $ digits
     case sign of
         Just '-' -> return $ - littleEnd ds
         _ -> return $ littleEnd ds
@@ -134,14 +134,14 @@ data LexerConfig s = LexerConfig
     } 
 
 
-skipSpace :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es ()
+skipSpace :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es ()
 skipSpace spaceChars = withInStack' "skipSpace" $ void $ takeWhileP1 spaceChars
 
-skipLineComment :: (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
+skipLineComment :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
 skipLineComment start = withInStack' "skipLineComment" $
     tokens start >> takeWhileP (not . isNewline) >> newline >> return ()
 
-skipBlockComment :: (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es ()
+skipBlockComment :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es ()
 skipBlockComment start (startCharOfEnd, restEnd) = withInStack' "skipBlockComment" $  do
     tokens start
     let aux = do
@@ -152,7 +152,7 @@ skipBlockComment start (startCharOfEnd, restEnd) = withInStack' "skipBlockCommen
                 Right _ -> return ()
                 Left _ -> aux
     aux
-parseStringLiteral :: (ParseEffFOEConstraints s st err es, S.Stream s, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
+parseStringLiteral :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
     => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es (S.Tokens s)
 parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLiteral" $ do
     tokens start
@@ -166,7 +166,7 @@ parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLi
                     aux (acc <> c)
     aux mempty
 
-parseIdentifier :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s), Monoid (S.Tokens s)) 
+parseIdentifier :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) 
     => (S.Token s -> Bool) -> (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 parseIdentifier isStart isPart = withInStack' "parseIdentifier" $ do
     firstChar <- satisfy_ isStart
@@ -205,7 +205,7 @@ instance (TShow (S.Tokens s)) => TShow (Lexcial s) where
 instance (TShow (S.Tokens s)) => Show (Lexcial s) where
     show = unpack . tshow
 
-lexer :: (ParseEffFOEConstraints s st err es, S.Stream s, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
+lexer :: (ParseEffFOEWithTokens buf s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
         Hefty.Ask Position :> es, HasSourceViewer es) => 
     LexerConfig s -> ParseEff s err es [Located (Lexcial s)]
 lexer config = 

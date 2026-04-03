@@ -39,8 +39,9 @@ type instance Hefty.FormOf (ParserST s) = Hefty.FormOf (State s)
 deriving instance Hefty.PolyHFunctor (ParserST s)
 deriving instance Hefty.FirstOrder (ParserST s)
 
-type ParseEffConstraints s st err es = (ParserST s :> es, StatefulThrow err st es, IsText err)
-type ParseEffFOEConstraints s st err es = (ParserST s :> es, StatefulThrow err st es, IsText err, FOEs es)
+type ParseEffConstraints buf s st err es = (S.Stream s buf :> es, StatefulThrow err st es, IsText err)
+type ParseEffFOEConstraints buf s st err es = (S.Stream s buf :> es, StatefulThrow err st es, IsText err, FOEs es)
+type ParseEffFOEWithTokens buf s st err es = (S.TokenClass s, ParseEffFOEConstraints buf s st err es)
 
 type TokenConstraints s = (TShow (S.Token s), Eq (S.Token s))
 type TokensConstraints s = (TShow (S.Tokens s), Eq (S.Tokens s))
@@ -143,11 +144,11 @@ runThrow = ParseEff .
 
 -- 下面的接口参考了 megaparsec 的接口设计，提供了一些基本的 parser combinator 接口
 {-# INLINE[2] try #-}
-try :: (ParseEffFOEConstraints s st err es) => ParseEff s err es a -> ParseEff s err es a
+try :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> ParseEff s err es a
 try p = do
-    s <- getParserState
+    s <- ParseEff S.current
     catch p (\e -> do
-                putParserState s
+                ParseEff $ S.revert s
                 reThrow e
             )
 
@@ -168,7 +169,7 @@ observing = observing' . raise
 #-}
 
 {-# INLINE[2] _empty #-}
-_empty :: ParseEffConstraints s st err es => ParseEff s err es a
+_empty :: ParseEffConstraints buf s st err es => ParseEff s err es a
 _empty = compact1 empty'
 
 {-# INLINE empty' #-}
@@ -176,25 +177,25 @@ empty' :: (StatefulThrow err st es, IsText err) => ParseEff s err (E.MultiThrow 
 empty' = throw (fromText "empty")
 
 {-# INLINE[2] _alter #-}
-_alter :: (ParseEffFOEConstraints s st err es) => ParseEff s err es a -> ParseEff s err es a -> ParseEff s err es a
+_alter :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> ParseEff s err es a -> ParseEff s err es a
 _alter (ParseEff p1) (ParseEff p2) = ParseEff $ E.alter p1 p2
 
 
-many' :: (ParserST s :> es, StatefulThrow err st es, IsText err, FOEs es) => ParseEff s err (E.MultiThrow (err, st) : es) a -> ParseEff s err es [a]
+many' :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err (E.MultiThrow (err, st) : es) a -> ParseEff s err es [a]
 many' p = withInStack' "many" do
-    s <- getParserState
-    next <- observing' p
+    s <- ParseEff S.current
+    next <- withInStack' "observing" $ observing' p
     case next of
         Left _ -> 
-            putParserState s >>
+            ParseEff $ S.revert s >>
             return []
         Right r -> (r :) <$> many' p
 
 {-# INLINE[2] _many #-}
-_many :: (ParseEffFOEConstraints s st err es) => ParseEff s err es a -> ParseEff s err es [a]
+_many :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> ParseEff s err es [a]
 _many = many' . raise
 
-instance (ParseEffFOEConstraints s st err es) => Alternative (ParseEff s err es) where
+instance (ParseEffFOEConstraints buf s st err es) => Alternative (ParseEff s err es) where
     {-# INLINE empty #-}
     empty = _empty
     {-# INLINE (<|>) #-}
@@ -235,8 +236,8 @@ compact = Hefty.interprets @es (
 
 
 {-# INLINE (<|>+) #-}
-(<|>+) :: forall s st err a b es1 es2. 
-            (KnownLength es1, ParseEffConstraints s st err (es1 ++ es2), FOEs (es1 ++ es2))
+(<|>+) :: forall buf s st err a b es1 es2. 
+            (KnownLength es1, ParseEffConstraints buf s st err (es1 ++ es2), FOEs (es1 ++ es2))
         => ParseEff s err es1 a -> ParseEff s err es2 b -> ParseEff s err (es1 ++ es2) (Either a b)
 (<|>+) (ParseEff p1) (ParseEff p2) = do
     catch 
@@ -244,11 +245,11 @@ compact = Hefty.interprets @es (
         (\_ -> ParseEff $ (Hefty.raisePrefix @es1) (Right <$> p2))
 
 {-# INLINE[2] lookAhead #-}
-lookAhead :: (ParseEffFOEConstraints s st err es) => ParseEff s err es a -> ParseEff s err es (Maybe a)
+lookAhead :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> ParseEff s err es (Maybe a)
 lookAhead p = do
-    s <- getParserState
+    s <- ParseEff S.current
     next <- observing p
-    putParserState s
+    ParseEff $ S.revert s
     case next of
         Left _ -> return Nothing
         Right r -> return (Just r)
@@ -258,14 +259,10 @@ lookAhead p = do
 #-}
 
 {-# INLINE[2] satisfy #-}
-satisfy :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (Maybe (S.Token s) -> Bool) -> ParseEff s err es (Maybe (S.Token s))
+satisfy :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (Maybe (S.Token s) -> Bool) -> ParseEff s err es (Maybe (S.Token s))
 satisfy p = withInStack' "satisfy" $ do
-    s <- getParserState
-    if p (S.head s) then do
-        putParserState (S.tail s)
-        return $ S.head s
-    else
-        throw (fromText ("Unexpected token: " <> tshow (S.head s)))
+    h <- ParseEff S.head
+    if p h then return h else throw (fromText ("Unexpected token: " <> tshow h))
 
 {-# RULES 
     "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t) 
@@ -274,17 +271,15 @@ satisfy p = withInStack' "satisfy" $ do
 
 {-# INLINE[2] satisfy_ #-}
 -- fail on EOF
-satisfy_ :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Token s)
+satisfy_ :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Token s)
 satisfy_ p = withInStack' "satisfy" $ do
-    s <- getParserState
-    case S.uncons s of
-        Just (t, rest) | p t -> do
-            putParserState rest
-            return t
-        _ -> throw $ fromText ("Unexpected token: " <> tshow (S.head s))
+    h <- ParseEff S.head
+    case h of
+        Just t | p t -> return t
+        _ -> throw (fromText ("Unexpected token: " <> tshow h))
 
 {-# INLINE[2] anyOf #-}
-anyOf :: (ParseEffFOEConstraints s st err es) => [ParseEff s err es a] -> ParseEff s err es a
+anyOf :: (ParseEffFOEConstraints buf s st err es) => [ParseEff s err es a] -> ParseEff s err es a
 anyOf = asum
 
 {-# RULES 
@@ -293,18 +288,16 @@ anyOf = asum
 #-}
 
 {-# INLINE[2] eof #-}
-eof :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => ParseEff s err es ()
+eof :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => ParseEff s err es ()
 eof = withInStack' "eof" $ do
-    s <- getParserState
-    if isNothing $ S.head s then return () else throw $ fromText ("Expected end of input, but got " <> tshow (S.head s))
+    hs <- ParseEff $ S.head
+    if isNothing $ hs then return () else throw $ fromText ("Expected end of input, but got " <> tshow hs)
 
 {-# INLINE tokens #-}
-tokens :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
+tokens :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
 tokens ts = withInStack' "tokens" $ do
-    s <- getParserState
-    let (heads, rest) = S.takeN_ (S.tokenLen @s ts) s
+    heads <- ParseEff $ S.takeN (S.tokenLen @s ts) 
     if heads == ts then do
-        putParserState rest
         return ()
     else
         throw $ fromText ("Expected " <> tshow ts <> ", but got " <> tshow heads)
@@ -316,22 +309,19 @@ tokens ts = withInStack' "tokens" $ do
     "some satisfy" forall p. some (satisfy_ p) = takeWhileP1' p
 #-}
 {-# INLINE takeWhileP #-}
-takeWhileP :: (ParseEffFOEConstraints s st err es, S.Stream s) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
+takeWhileP :: (ParseEffFOEWithTokens buf s st err es) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 takeWhileP p = withInStack' "takeWhileP" $ do
-    s <- getParserState
-    let (ts, rest) = S.takeWhile_ p s
-    putParserState rest
-    return ts
+    ParseEff $ S.takeWhile p 
 {-# INLINE takeWhileP' #-}
-takeWhileP' :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
+takeWhileP' :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
 takeWhileP' p = fmap (S.toList @s) (takeWhileP p)
 
 {-# INLINE takeWhileP1 #-}
-takeWhileP1 :: (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
+takeWhileP1 :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 takeWhileP1 p = satisfy_ p >> takeWhileP p
 
 {-# INLINE takeWhileP1' #-}
-takeWhileP1' :: forall s st err es. (ParseEffFOEConstraints s st err es, S.Stream s, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
+takeWhileP1' :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
 takeWhileP1' p = fmap (S.toList @s) (takeWhileP1 p)
 
 -- Coroutine version of `many`, used for fusion different passes

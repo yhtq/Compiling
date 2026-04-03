@@ -52,8 +52,10 @@ redBold = PP.color PP.Red <> PP.bold
 nSpace :: Int -> Doc
 nSpace n = pretty (replicate n ' ')
 
-cutText :: Int -> Int -> T.Text -> (T.Text,  T.Text,  T.Text)
-cutText start end text = let (pre, rest) = T.splitAt (start - 1) text in
+cutText :: Int -> Int -> T.Text -> (T.Text, T.Text, T.Text)
+cutText start end text = 
+    let text1 = T.replace "\n" "\\n" text in
+    let (pre, rest) = T.splitAt (start - 1) text1 in
     let (cur, post) = T.splitAt (end - start) rest in
     (pre, cur, post)
 
@@ -79,7 +81,7 @@ printErrorTree sourceCode (Node (errMsg, (startPos, endPos)) subTrees) =
             then 
                 vsep [srcInfo, errMsg]
             else
-                vsep [srcInfo, errMsg <> ":", indent 2 subErrors]
+                vsep [srcInfo, errMsg <> "at" <> (pretty $ show startPos) <>  ":", indent 2 subErrors]
 
 printErrorForest :: Vector T.Text -> Forest (Doc, (Position, Position)) -> Doc
 printErrorForest _ [] = PP.emptyDoc

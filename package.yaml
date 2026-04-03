@@ -1,9 +1,9 @@
 name:                Compiling
 version:             0.1.0.0
-github:              "githubuser/Compiling"
+github:              "yhtq/Compiling"
 license:             BSD-3-Clause
 author:              "yhtq"
-maintainer:          "yhtq@example.com"
+maintainer:          "1414670268@qq.com"
 copyright:           "2026 yhtq"
 
 extra-source-files:
@@ -17,7 +17,7 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/Compiling#readme>
+description:         编译原理（2026）课程作业
 
 dependencies:
 - base >= 4.7 && < 5
@@ -91,5 +91,6 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -O0
     dependencies:
     - Compiling
