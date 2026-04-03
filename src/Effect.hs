@@ -156,13 +156,13 @@ try p = do
 compact1 :: forall e s es err. (e :> es) => ParseEff s err (e : es)  ~> ParseEff s err es
 compact1 = ParseEff . Hefty.translate id . asEff
 
-{-# INLINE[2] observing' #-}
-observing' :: (FOEs es) => ParseEff s err (E.MultiThrow node : es) a -> ParseEff s err es (Either (T.Forest node) a)
-observing' = runThrow
+-- {-# INLINE[2] observing' #-}
+-- observing' :: (FOEs es) => ParseEff s err (E.MultiThrow node : es) a -> ParseEff s err es (Either (T.Forest node) a)
+-- observing' = runThrow
 
 {-# INLINE[2] observing #-}
-observing :: (FOEs es) => ParseEff s err es a -> ParseEff s err es (Either (T.Forest node) a)
-observing = observing' . raise
+observing :: (FOEs es, E.MultiThrow node :> es) => ParseEff s err es a -> ParseEff s err es (Either (T.Forest node) a)
+observing = ParseEff . Hefty.interposeBy (pure . Right) (\e _ -> pure $ Left (E.translateToTree e)) . asEff
 
 {-# RULES 
     "try observing" forall p. try (observing p) = observing p
@@ -181,20 +181,28 @@ _alter :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> Par
 _alter (ParseEff p1) (ParseEff p2) = ParseEff $ E.alter p1 p2
 
 
-many' :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err (E.MultiThrow (err, st) : es) a -> ParseEff s err es [a]
-many' p = withInStack' "many" do
-    s <- ParseEff S.current
-    next <- withInStack' "observing" $ observing' p
-    case next of
-        Left _ -> 
-            ParseEff $ S.revert s >>
-            return []
-        Right r -> (r :) <$> many' p
+-- many' :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err (E.MultiThrow (err, st) : es) a -> ParseEff s err es [a]
+-- many' p = withInStack' "many" do
+--     s <- ParseEff S.current
+--     next <- withInStack' "observing" $ observing' p
+--     case next of
+--         Left _ -> 
+--             ParseEff $ S.revert s >>
+--             return []
+--         Right r -> (r :) <$> many' p
 
 {-# INLINE[2] _many #-}
 _many :: (ParseEffFOEConstraints buf s st err es) => ParseEff s err es a -> ParseEff s err es [a]
-_many = many' . raise
+_many p = withInStack' "many" $ do
+    s <- ParseEff S.current
+    next <- withInStack' "observing" $ observing p
+    case next of
+        Left _ -> do
+            ParseEff $ S.revert s 
+            return []
+        Right r -> (r :) <$> _many p
 
+-- 注意使用 <|>, some, many, optional 等组合子时 *失败时不会自动回溯*
 instance (ParseEffFOEConstraints buf s st err es) => Alternative (ParseEff s err es) where
     {-# INLINE empty #-}
     empty = _empty
@@ -305,9 +313,7 @@ tokens ts = withInStack' "tokens" $ do
 {-# RULES 
     "many satisfy" forall p. many (satisfy_ p) = takeWhileP' p
 #-}
-{-# RULES 
-    "some satisfy" forall p. some (satisfy_ p) = takeWhileP1' p
-#-}
+
 {-# INLINE takeWhileP #-}
 takeWhileP :: (ParseEffFOEWithTokens buf s st err es) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 takeWhileP p = withInStack' "takeWhileP" $ do
@@ -317,11 +323,14 @@ takeWhileP' :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es) =
 takeWhileP' p = fmap (S.toList @s) (takeWhileP p)
 
 {-# INLINE takeWhileP1 #-}
-takeWhileP1 :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
-takeWhileP1 p = satisfy_ p >> takeWhileP p
+takeWhileP1 :: forall buf s st err es.  (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
+takeWhileP1 p = do 
+    h <- satisfy_ p 
+    t <- takeWhileP p
+    return $ S.fromList @s [h] <> t
 
 {-# INLINE takeWhileP1' #-}
-takeWhileP1' :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
+takeWhileP1' :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
 takeWhileP1' p = fmap (S.toList @s) (takeWhileP1 p)
 
 -- Coroutine version of `many`, used for fusion different passes

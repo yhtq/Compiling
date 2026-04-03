@@ -15,7 +15,12 @@ import GHC.Exception (throw)
 import Control.Exception (AssertionFailed(AssertionFailed))
 import qualified Data.Vector as V
 import Lexer 
-import Control.Applicative (Alternative(..))
+import Control.Applicative (Alternative(..), optional)
+import Effect (getParserState, tokens, takeWhileP, ParseEff (..), satisfy_)
+import Effect (try, takeWhileP)
+import Control.Monad (void)
+import qualified Stream as S
+import GHC.Unicode (isDigit)
 
 
 intToLittleEnd :: Int -> [Char]
@@ -86,12 +91,18 @@ testLexer input parser expected =
         Left e -> throw $ AssertionFailed ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) e)
         Right tokens -> tokens `shouldBe` expected
 
+withPos :: SimpleLexer a -> SimpleLexer (a, V.Vector Text, Position)
+withPos parser = do
+    result <- parser
+    TextStream (vt, pos) <- getParserState
+    return (result, vt, pos)
+
 manySpec1 :: Spec
 manySpec1 = it "many' should parse zero or more occurrences" $
-    testLexer "" (many (char 'a')) ([] :: [Char])
+    testLexer "bbbbb" (withPos $ many (char 'a')) ([] :: [Char], V.fromList ["bbbbb\n"], Position 1 1)
 manySpec2 :: Spec
 manySpec2 = it "many' should parse multiple occurrences" $
-    testLexer "aaaab" (many (char 'a')) "aaaa"
+    testLexer "aaaab" (withPos $ many (char 'a')) ("aaaa", V.fromList ["b\n"], Position 1 5)
     -- let parser = many (char 'a') in
     -- let initStream = fromText "aaab" in
     -- case runSimpleLexer parser initStream of
@@ -101,15 +112,22 @@ manySpec2 = it "many' should parse multiple occurrences" $
 
 lexerSpec :: Spec
 lexerSpec = describe "Lexer tests" $ do
+    it "splitAt test" $ T.splitAt 1 "\nello" `shouldBe` ("\n", "ello") 
     it "fromText test" $ fromText "aaa \n bbb" `shouldBe` TextStream (V.fromList ["aaa \n", " bbb\n"], Position 1 1)
+    it "optional test" $ testLexer "bbbbb" (withPos $ optional $ try (char 'a')) (Nothing, V.fromList ["bbbbb\n"], Position 1 1)
+    it "tokens test" $ testLexer "abcdb" (withPos $ tokens "abcd") ((), V.fromList ["b\n"], Position 1 5)
+    it "tokens test 2" $ testLexer "abc" (withPos $ tokens "abc\n") ((), V.fromList [], Position 2 1)
+    it "takeWhile test" $ testLexer "abcdb" (withPos $ takeWhileP (/= 'd')) ("abc", V.fromList ["db\n"], Position 1 4)
     manySpec1
     manySpec2
-    -- it "should parse a simple line comment" $
-    --     testLexer "-- this is a comment\n 100 _a啊121bc" [
-    --         Located (LineComment, (Position 1 1, Position 1 21)),
-    --         Located (Space, (Position 2 1, Position 2 1)),
-    --         Located (NumericLiteral 100, (Position 2 2, Position 2 4)),
-    --         Located (Space, (Position 2 5, Position 2 5)),
-    --         Located (Identifier "_a啊121bc", (Position 2 6, Position 2 13)),
-    --         Located (NewLine, (Position 2 14,Position 2 14))
-    --         ]
+    it "simple line comment" $
+        testLexer "-- this is a comment" (withPos $ (tokens "--" >> takeWhileP (not . isNewline) >> newline)) ((), V.fromList [], Position 2 1)
+    it "should parse a simple line comment" $
+        testLexer "-- this is a comment\n 100 _a啊121bc" (lexer defaultLexerConfig) [
+            Located (LineComment, (Position 1 1, Position 1 21)),
+            Located (Space, (Position 2 1, Position 2 1)),
+            Located (NumericLiteral 100, (Position 2 2, Position 2 4)),
+            Located (Space, (Position 2 5, Position 2 5)),
+            Located (Identifier "_a啊121bc", (Position 2 6, Position 2 13)),
+            Located (NewLine, (Position 2 14,Position 2 14))
+            ]

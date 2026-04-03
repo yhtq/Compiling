@@ -16,6 +16,10 @@ data Position = Position
     { line :: Int
     , column :: Int
     } deriving (Show, Eq)
+
+instance TShow Position where
+    tshow (Position l c) = T.pack (show l ++ ":" ++ show c)
+
 advanceLine :: Position -> Position
 advanceLine (Position l _) = Position (l + 1) 1
 advanceColumn :: Position -> Position
@@ -32,6 +36,9 @@ newtype TextStream = TextStream (Vector Text, Position) deriving (Show, Eq)
 fromText :: Text -> TextStream
 fromText t = TextStream (V.fromList (map (<> "\n") (T.lines t)), Position 1 1)
 
+instance TShow TextStream where
+    tshow (TextStream (lines, pos)) = "TextStream at " <> tshow pos <> " with lines: " <> tshow (V.toList lines)
+
 instance S.TokenClass TextStream where
     type Token TextStream = Char
     type Tokens TextStream = Text
@@ -44,16 +51,22 @@ runPureStreamInState = ParseEff . Hefty.interpret (
         \case
             S.TakeN n -> do
                 ts <- asEff getParserState
-                let go n (TextStream (ts, pos)) = do
-                        case V.uncons ts of
-                            Just (line, rest) -> let (t, r) = T.splitAt n line in
-                                if T.null r then do
-                                    t' <- go (n - T.length t) (TextStream (rest, advanceLine pos))
-                                    return (line <> t')
-                                else do                            
-                                    asEff $ putParserState (TextStream (V.cons r rest, advanceColumns n pos))
-                                    return t
-                            Nothing -> return ""
+                let go n (TextStream (ts, pos)) = if n <= 0 then return "" else do
+                            case V.uncons ts of
+                                Just (line, rest) -> let (t, r) = T.splitAt n line in
+                                    if T.null r then 
+                                        if n == T.length t then do 
+                                            asEff $ putParserState (TextStream (rest, advanceLine pos))
+                                            return t
+                                        else do
+                                            t' <- go (n - T.length t) (TextStream (rest, advanceLine pos))
+                                            return (line <> t')
+                                    else do                            
+                                        asEff $ putParserState (TextStream (V.cons r rest, advanceColumns n pos))
+                                        return t
+                                Nothing -> do
+                                    asEff $ putParserState (TextStream (V.empty, pos))
+                                    return ""
                 go n ts
             S.TakeWhile p -> do
                 ts <- asEff getParserState
@@ -66,7 +79,9 @@ runPureStreamInState = ParseEff . Hefty.interpret (
                                 else do
                                     asEff $ putParserState (TextStream (V.cons r rest, advanceColumns (T.length t) pos))
                                     return t
-                            Nothing -> return ""
+                            Nothing -> do
+                                asEff $ putParserState (TextStream (V.empty, pos))
+                                return ""
                 go ts
             S.Current -> asEff getParserState
             S.Revert buf -> asEff $ putParserState buf

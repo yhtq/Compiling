@@ -16,7 +16,7 @@ class TokenClass s where
     fromList :: [Token s] -> Tokens s
     toList :: Tokens s -> [Token s]
 
--- buf 是某种暂存状态，可以用来回溯 Stream 的状态
+-- buf 是某种暂存状态，可以用来回溯 Stream 
 data Stream s buf :: Effect where
     TakeWhile :: (Token s -> Bool) -> Stream s buf f (Tokens s)
     TakeN :: Int -> Stream s buf f (Tokens s)

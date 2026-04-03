@@ -68,7 +68,7 @@ newline :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char) => ParseEff
 newline = void $ satisfy_ isNewline 
 
 -- 根据 base 解析一位或多位整数，base 只能是 2, 8, 10, 16，否则永远失败
-digits :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, ?base :: Int) => ParseEff s err es [Char]
+digits :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es [Char]
 digits = do
     let _isDigit c = case ?base of
             2 -> c == '0' || c == '1'
@@ -76,7 +76,7 @@ digits = do
             10 -> isDigit c
             16 -> isHexDigit c
             _ -> False
-    some (satisfy_ _isDigit)
+    takeWhileP1'  _isDigit
 
 -- 注意这里不处理负号
 bigEnd :: (?base :: Int) => [Char] -> Int
@@ -86,10 +86,10 @@ bigEnd = foldr (\c acc -> acc * ?base + digitToInt c) 0
 littleEnd :: (?base :: Int) => [Char] -> Int
 littleEnd = foldl (\acc c -> acc * ?base + digitToInt c) 0
 
-parseInt :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, ?base :: Int) => ParseEff s err es Int
+parseInt :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es Int
 parseInt = withInStack' "parseInt" $ do
-    sign <- withInStack' "sign" $ optional (satisfy_ (\c -> c == '+' || c == '-'))
-    ds <- withInStack' "digits" $ digits
+    sign <- optional $ try (satisfy_ (\c -> c == '+' || c == '-'))
+    ds <- digits
     case sign of
         Just '-' -> return $ - littleEnd ds
         _ -> return $ littleEnd ds
@@ -134,7 +134,7 @@ data LexerConfig s = LexerConfig
     } 
 
 
-skipSpace :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es ()
+skipSpace :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es ()
 skipSpace spaceChars = withInStack' "skipSpace" $ void $ takeWhileP1 spaceChars
 
 skipLineComment :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
@@ -210,7 +210,7 @@ lexer :: (ParseEffFOEWithTokens buf s st err es, TokensConstraints s, S.Token s 
     LexerConfig s -> ParseEff s err es [Located (Lexcial s)]
 lexer config = 
     let ?base = 10 in
-    some $ locatify $ anyOf $ map try  [
+    some $ locatify $ anyOf $ map try [
         skipSpace (spaceChars config) >> return Space,
         newline >> return NewLine,
         skipLineComment (startOfLineComment config) >> return LineComment,
