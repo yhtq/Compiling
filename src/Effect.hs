@@ -263,7 +263,7 @@ lookAhead p = do
         Right r -> return (Just r)
 
 {-# RULES 
-    "satisfy or" forall p1 p2. satisfy p1 <|> satisfy p2 = satisfy (\t -> p1 t || p2 t) 
+    "satisfy or" forall p1 p2. try (satisfy p1) <|> try (satisfy p2) = try $ satisfy (\t -> p1 t || p2 t) 
 #-}
 
 {-# INLINE[2] satisfy #-}
@@ -273,7 +273,7 @@ satisfy p = withInStack' "satisfy" $ do
     if p h then return h else throw (fromText ("Unexpected token: " <> tshow h))
 
 {-# RULES 
-    "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t) 
+    "satisfy_ or" forall p1 p2. try (satisfy_ p1) <|> try (satisfy_ p2) = try $ satisfy_ (\t -> p1 t || p2 t) 
 #-}
 
 
@@ -291,8 +291,8 @@ anyOf :: (ParseEffFOEConstraints buf s st err es) => [ParseEff s err es a] -> Pa
 anyOf = asum
 
 {-# RULES 
-"anyOf satisfy_" forall pl. anyOf (map satisfy_ pl) = satisfy_ (\x -> any (x &) pl)
-"anyOf satisfy" forall pl. anyOf (map satisfy pl) = satisfy (\x -> any (x &) pl)
+"anyOf satisfy_" forall pl. anyOf (map (try . satisfy_) pl) = try $ satisfy_ (\x -> any (x &) pl)
+"anyOf satisfy" forall pl. anyOf (map (try . satisfy) pl) = try $ satisfy (\x -> any (x &) pl)
 #-}
 
 {-# INLINE[2] eof #-}
@@ -311,7 +311,7 @@ tokens ts = withInStack' "tokens" $ do
         throw $ fromText ("Expected " <> tshow ts <> ", but got " <> tshow heads)
 
 {-# RULES 
-    "many satisfy" forall p. many (satisfy_ p) = takeWhileP' p
+    "many satisfy" forall p. many (try $ satisfy_ p) = takeWhileP' p
 #-}
 
 {-# INLINE takeWhileP #-}
