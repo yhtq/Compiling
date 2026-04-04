@@ -1,5 +1,5 @@
 module Stream where
-
+import Prelude hiding (takeWhile, head)
 -- 使用 vector 来实现一个 Stream 型结构
 import qualified Data.Vector as V
 import qualified Data.Text as T
@@ -33,6 +33,18 @@ head = do
     r <- takeN 1
     return $ listToMaybe $ toList @s r
 
+-- TODO: 实现为 primitive 操作以提高性能
+{-# INLINE peekN #-}
+peekN :: forall s buf es. (Stream s buf :> es) => Int -> Hefty.Eff es (Tokens s)
+peekN n = do
+    buf <- current
+    takeN n <* revert buf
+
+{-# INLINE peek #-}
+peek :: forall s buf es. (TokenClass s, Stream s buf :> es) => Hefty.Eff es (Maybe (Token s))
+peek = do
+    buf <- current
+    head <* revert buf
 
 instance TokenClass T.Text where
     type Token T.Text = Char

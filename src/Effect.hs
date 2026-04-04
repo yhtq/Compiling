@@ -31,6 +31,7 @@ import Exception (StatefulThrow)
 import qualified Data.Tree as T
 import Control.Monad.Hefty.Input (Input)
 import qualified Control.Monad.Hefty.Input as Hefty
+import Control.Monad (void)
 
 newtype ParserST s f a = ParserST (State s f a)
 type instance Hefty.OrderOf (ParserST s) = Hefty.OrderOf (State s)
@@ -263,17 +264,23 @@ lookAhead p = do
         Right r -> return (Just r)
 
 {-# RULES 
-    "satisfy or" forall p1 p2. try (satisfy p1) <|> try (satisfy p2) = try $ satisfy (\t -> p1 t || p2 t) 
+    "satisfy or" forall p1 p2. satisfy p1 <|> satisfy p2 = satisfy (\t -> p1 t || p2 t) 
 #-}
+
+-- 以下单个字符的接口在失败时都不会消耗流，因此不需要配合 `try` 使用
 
 {-# INLINE[2] satisfy #-}
 satisfy :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (Maybe (S.Token s) -> Bool) -> ParseEff s err es (Maybe (S.Token s))
 satisfy p = withInStack' "satisfy" $ do
-    h <- ParseEff S.head
-    if p h then return h else throw (fromText ("Unexpected token: " <> tshow h))
+    h <- ParseEff S.peek
+    if p h then 
+        ParseEff S.head >>
+        return h 
+    else 
+        throw (fromText ("Unexpected token: " <> tshow h))
 
 {-# RULES 
-    "satisfy_ or" forall p1 p2. try (satisfy_ p1) <|> try (satisfy_ p2) = try $ satisfy_ (\t -> p1 t || p2 t) 
+    "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t) 
 #-}
 
 
@@ -281,9 +288,11 @@ satisfy p = withInStack' "satisfy" $ do
 -- fail on EOF
 satisfy_ :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Token s)
 satisfy_ p = withInStack' "satisfy" $ do
-    h <- ParseEff S.head
+    h <- ParseEff S.peek
     case h of
-        Just t | p t -> return t
+        Just t | p t -> 
+            ParseEff S.head >>
+            return t
         _ -> throw (fromText ("Unexpected token: " <> tshow h))
 
 {-# INLINE[2] anyOf #-}
@@ -291,16 +300,22 @@ anyOf :: (ParseEffFOEConstraints buf s st err es) => [ParseEff s err es a] -> Pa
 anyOf = asum
 
 {-# RULES 
-"anyOf satisfy_" forall pl. anyOf (map (try . satisfy_) pl) = try $ satisfy_ (\x -> any (x &) pl)
-"anyOf satisfy" forall pl. anyOf (map (try . satisfy) pl) = try $ satisfy (\x -> any (x &) pl)
+"try satisfy" forall p. try (satisfy p) = satisfy p
+"try satisfy_" forall p. try (satisfy_ p) = satisfy_ p
+"try eof" try eof = eof
+"anyOf satisfy_" forall pl. anyOf (map satisfy_ pl) = satisfy_ (\x -> any (x &) pl)
+"anyOf satisfy" forall pl. anyOf (map satisfy pl) = satisfy (\x -> any (x &) pl)
 #-}
 
 {-# INLINE[2] eof #-}
 eof :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => ParseEff s err es ()
 eof = withInStack' "eof" $ do
-    hs <- ParseEff $ S.head
-    if isNothing $ hs then return () else throw $ fromText ("Expected end of input, but got " <> tshow hs)
+    hs <- ParseEff $ S.peek
+    if isNothing $ hs then 
+        void $ ParseEff S.head  
+    else throw $ fromText ("Expected end of input, but got " <> tshow hs)
 
+-- 注意 tokens 接口在失败时会消耗流中的部分 token，因此在使用时需要注意回溯问题，建议配合 `try` 使用
 {-# INLINE tokens #-}
 tokens :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
 tokens ts = withInStack' "tokens" $ do
@@ -311,7 +326,7 @@ tokens ts = withInStack' "tokens" $ do
         throw $ fromText ("Expected " <> tshow ts <> ", but got " <> tshow heads)
 
 {-# RULES 
-    "many satisfy" forall p. many (try $ satisfy_ p) = takeWhileP' p
+    "many satisfy" forall p. many (satisfy_ p) = takeWhileP' p
 #-}
 
 {-# INLINE takeWhileP #-}
