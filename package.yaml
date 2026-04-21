@@ -34,6 +34,7 @@ dependencies:
 - prettyprinter
 - prettyprinter-ansi-terminal
 - fmt
+- hashable
 
 language: GHC2024
 default-extensions: LambdaCase,
@@ -94,3 +95,11 @@ tests:
     - -O0
     dependencies:
     - Compiling
+
+benchmarks:
+  my-benchmark:
+    main:                Main.hs
+    source-dirs:         bench
+    dependencies:
+      - Compiling
+      - criterion        # Popular benchmarking library

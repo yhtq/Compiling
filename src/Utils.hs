@@ -30,6 +30,9 @@ advanceColumns n (Position l c) = Position l (c + n)
 -- 一个带位置信息的值，包含值和它在文本中的起止位置
 newtype Located a = Located (a, (Position, Position)) deriving (Show, Eq, Functor)
 
+unlocated :: Located a -> a
+unlocated (Located (a, _)) = a
+
 -- 一个 Text 流状态，包括分行的原文本和当前(head of vector)所在位置
 -- 换行符也会被输出
 newtype TextStream = TextStream (Vector Text, Position) deriving (Show, Eq)
@@ -133,4 +136,16 @@ instance TShow LexerError where
 
 showPos :: Position -> Text
 showPos pos = T.pack (show (column pos) ++ ":" ++ show (line pos))
+
+class Into a b where
+    into :: a -> b
+
+instance (Into a b) => Into [a] [b] where
+    into = map into
+
+-- instance {-# OVERLAPPABLE #-} (a ~ b) => Into a b where
+--     into = id
+
+instance {-# OVERLAPPING #-} Into (Located a) a where
+    into (Located (a, _)) = a
 

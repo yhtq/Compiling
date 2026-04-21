@@ -1,24 +1,36 @@
 module Main (main) where
-import Control.Monad.Hefty
-import Control.Monad.Hefty.State
+import Polysemy 
+import Text.Megaparsec
+import Polysemy.Embed
+import Polysemy.Internal.Tactics
+import Polysemy.Final
 
-il :: [Int]
-il = repeat 1
+-- data HigherEmbIO z a where
+--   Embed' :: IO a -> HigherEmbIO z a
+--   PrefixSem :: String -> z a -> HigherEmbIO z a
 
-ilEa :: Eff '[State Int] [Int]
-ilEa = do
-    n <- get
-    modify (+1)
-    rest <- ilEa
-    return (n:rest)
+-- makeSem ''HigherEmbIO
 
-heads :: Eff '[State Int] [Int] -> Eff '[State Int] Int
-heads eff = do
-    xs <- eff
-    return (head xs)
 
-main :: IO ()
-main = 
-    let (_, il1) = runPure $ runState 0 ilEa
-     in
-    print $ take 10 il1
+-- prefixIO :: String -> IO a -> IO a
+-- prefixIO label = (putStrLn label >>)
+
+-- runHigherEmbIO :: (Member (Final IO) r) => Sem (HigherEmbIO ': r) a -> Sem r a
+-- runHigherEmbIO = interpretFinal $ \case
+--   Embed' io -> liftS io
+--   PrefixSem label sem -> do
+--     p <- runS sem
+--     pure $ prefixIO label p
+
+
+
+-- bar, baz :: IO ()
+-- bar = putStrLn "bar"
+-- baz = putStrLn "baz"
+
+-- main :: IO ()
+-- main = do
+--   prefixIO "FOO" $ bar >> baz
+--   runFinal $ runHigherEmbIO $ prefixSem "FOO" $ embed' bar >> embed' baz
+
+main = putStrLn "Hello, World!"

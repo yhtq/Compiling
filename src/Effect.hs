@@ -40,6 +40,9 @@ type instance Hefty.FormOf (ParserST s) = Hefty.FormOf (State s)
 deriving instance Hefty.PolyHFunctor (ParserST s)
 deriving instance Hefty.FirstOrder (ParserST s)
 
+-- s 是流类型，buf 是流类型使用的 snap
+-- st 是异常节点中携带的状态类型，err 是异常节点的类型
+-- es 是 ParseEff 中使用的 effect 列表
 type ParseEffConstraints buf s st err es = (S.Stream s buf :> es, StatefulThrow err st es, IsText err)
 type ParseEffFOEConstraints buf s st err es = (S.Stream s buf :> es, StatefulThrow err st es, IsText err, FOEs es)
 type ParseEffFOEWithTokens buf s st err es = (S.TokenClass s, ParseEffFOEConstraints buf s st err es)
@@ -283,6 +286,7 @@ satisfy p = withInStack' "satisfy" $ do
     "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t) 
 #-}
 
+-- satisfy 系列函数失败时不会有任何消耗
 
 {-# INLINE[2] satisfy_ #-}
 -- fail on EOF
@@ -294,6 +298,17 @@ satisfy_ p = withInStack' "satisfy" $ do
             ParseEff S.head >>
             return t
         _ -> throw (fromText ("Unexpected token: " <> tshow h))
+
+{-# INLINE[2] satisfy'_ #-}
+satisfy'_ :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s)) => (S.Token s -> Maybe a) -> ParseEff s err es a
+satisfy'_ p = withInStack' "satisfy_" $ do
+    h <- ParseEff S.peek
+    case h of
+        Just t | Just a <- p t -> 
+            ParseEff S.head >>
+            return a
+        _ -> throw (fromText ("Unexpected token: " <> tshow h))
+
 
 {-# INLINE[2] anyOf #-}
 anyOf :: (ParseEffFOEConstraints buf s st err es) => [ParseEff s err es a] -> ParseEff s err es a
@@ -351,7 +366,7 @@ takeWhileP1' p = fmap (S.toList @s) (takeWhileP1 p)
 -- Coroutine version of `many`, used for fusion different passes
 {-# INLINE stream #-}
 stream :: (Hefty.Suffix es es') =>
-    ParseEff s err es a -> ParseEff s err (Input a : es') x -> ParseEff s err es' x
-stream p = ParseEff . Hefty.interpret (
+    ParseEff s err es a -> ParseEff s err1 (Input a : es') x -> Eff es' x
+stream p = Hefty.interpret (
         \Hefty.Input -> Hefty.raises $ asEff p
-    ) . asEff 
+    ) . asEff     

@@ -25,10 +25,12 @@ source-repository head
 
 library
   exposed-modules:
+      Ast
       Effect
       Exception
       Lexer
       Lib
+      Parser
       Printer
       Stream
       Text
@@ -49,6 +51,7 @@ library
     , containers
     , data-effects-core
     , fmt
+    , hashable
     , hashmap
     , heftia-effects
     , hspec
@@ -78,6 +81,7 @@ executable Compiling-exe
     , containers
     , data-effects-core
     , fmt
+    , hashable
     , hashmap
     , heftia-effects
     , hspec
@@ -109,6 +113,39 @@ test-suite Compiling-test
     , containers
     , data-effects-core
     , fmt
+    , hashable
+    , hashmap
+    , heftia-effects
+    , hspec
+    , prettyprinter
+    , prettyprinter-ansi-terminal
+    , text
+    , unicode-show
+    , vector
+  default-language: GHC2024
+
+benchmark my-benchmark
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_Compiling
+  autogen-modules:
+      Paths_Compiling
+  hs-source-dirs:
+      bench
+  default-extensions:
+      LambdaCase, OverloadedStrings, DerivingStrategies, DataKinds, TypeFamilies, BlockArguments, FunctionalDependencies, RecordWildCards, DefaultSignatures, PatternSynonyms, TemplateHaskell, PartialTypeSignatures, AllowAmbiguousTypes, DuplicateRecordFields, OverloadedRecordDot, LambdaCase, ImplicitParams
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      Compiling
+    , QuickCheck
+    , base >=4.7 && <5
+    , co-log
+    , containers
+    , criterion
+    , data-effects-core
+    , fmt
+    , hashable
     , hashmap
     , heftia-effects
     , hspec

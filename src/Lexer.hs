@@ -181,6 +181,30 @@ data Lexcial s = LineComment
     | Identifier (S.Tokens s)
     | Space
     | NewLine
+    | EOF
+
+-- 经过预处理的词法单元，已经区分了标识符和关键字
+data LexcialR s k = NumericLiteralR Int
+    | StringLiteralR (S.Tokens s)
+    | IdentifierR (S.Tokens s)
+    | KeywordR k
+    | EOFR
+
+collectJust :: [Maybe a] -> [a]
+collectJust [] = []
+collectJust (Just x : xs) = x : collectJust xs
+collectJust (Nothing : xs) = collectJust xs
+
+refineLexcial :: (S.Tokens s -> Maybe k) -> Lexcial s -> Maybe (LexcialR s k)
+refineLexcial _ (NumericLiteral n) = Just $ NumericLiteralR n
+refineLexcial _ (StringLiteral s) = Just $ StringLiteralR s
+refineLexcial toKey (Identifier s) = Just $ case toKey s of
+    Just k -> KeywordR k
+    Nothing -> IdentifierR s
+refineLexcial _ _ = Nothing
+
+refineLexcials :: (S.Tokens s -> Maybe k) -> [Lexcial s] -> [LexcialR s k]
+refineLexcials toKey = collectJust . map (refineLexcial toKey)
 
 instance (Eq (S.Tokens s)) => Eq (Lexcial s) where
     LineComment == LineComment = True
@@ -201,6 +225,7 @@ instance (TShow (S.Tokens s)) => TShow (Lexcial s) where
     tshow (Identifier s) = "ID(" <> tshow s <> ")"
     tshow Space = "Space"
     tshow NewLine = "NewLine"
+    tshow EOF = ""
 
 instance (TShow (S.Tokens s)) => Show (Lexcial s) where
     show = unpack . tshow
