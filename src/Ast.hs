@@ -43,10 +43,10 @@ instance (TShow lit, TShow v) => TShow (Typ lit v) where
 instance (TShow lit, TShow v, TShow typ) => TShow (TypedTerm typ lit v) where
     tshow (VarT v t) = tshow v <> " : " <> tshow t
     tshow (LitT l t) = tshow l <> " : " <> tshow t
-    tshow (LamT v vt body _) = "λ" <> tshow v <> " : " <> tshow vt <> ". " <> tshow body
+    tshow (LamT v vt body _) = "\\" <> tshow v <> " -> " <> tshow vt <> ". " <> tshow body
     tshow (AppT f x _) = "(" <> tshow f <> " " <> tshow x <> ")"
     tshow (OLetT v vt b1 b2 _) = "let " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2  
-    tshow (RLetT v vt b1 b2 _) = "rec " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2
+    tshow (RLetT v vt b1 b2 _) = "let rec " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2
 
 instance (Hashable lit, Hashable v) => Hashable (Term lit v) where
     hashWithSalt s (Var v) = s `hashWithSalt` (0 :: Int) `hashWithSalt` v

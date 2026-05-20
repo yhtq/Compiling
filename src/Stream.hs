@@ -16,35 +16,35 @@ class TokenClass s where
     fromList :: [Token s] -> Tokens s
     toList :: Tokens s -> [Token s]
 
--- buf 是某种暂存状态，可以用来回溯 Stream 
-data Stream s buf :: Effect where
-    TakeWhile :: (Token s -> Bool) -> Stream s buf f (Tokens s)
-    TakeN :: Int -> Stream s buf f (Tokens s)
-    Revert :: buf -> Stream s buf f ()
-    Current :: Stream s buf f buf
+-- snap 是某种暂存状态，可以用来回溯 Stream 
+data Stream s snap :: Effect where
+    TakeWhile :: (Token s -> Bool) -> Stream s snap f (Tokens s)
+    TakeN :: Int -> Stream s snap f (Tokens s)
+    Revert :: snap -> Stream s snap f ()
+    Current :: Stream s snap f snap
     -- Uncons :: s -> Stream s f (Maybe (Token s, s))
 
 Hefty.makeEffectF ''Stream
 
 
 {-# INLINE head #-}
-head :: forall s buf es. (TokenClass s, Stream s buf :> es) => Hefty.Eff es (Maybe (Token s))
+head :: forall s snap es. (TokenClass s, Stream s snap :> es) => Hefty.Eff es (Maybe (Token s))
 head = do
     r <- takeN 1
     return $ listToMaybe $ toList @s r
 
 -- TODO: 实现为 primitive 操作以提高性能
 {-# INLINE peekN #-}
-peekN :: forall s buf es. (Stream s buf :> es) => Int -> Hefty.Eff es (Tokens s)
+peekN :: forall s snap es. (Stream s snap :> es) => Int -> Hefty.Eff es (Tokens s)
 peekN n = do
-    buf <- current
-    takeN n <* revert buf
+    snap <- current
+    takeN n <* revert snap
 
 {-# INLINE peek #-}
-peek :: forall s buf es. (TokenClass s, Stream s buf :> es) => Hefty.Eff es (Maybe (Token s))
+peek :: forall s snap es. (TokenClass s, Stream s snap :> es) => Hefty.Eff es (Maybe (Token s))
 peek = do
-    buf <- current
-    head <* revert buf
+    snap <- current
+    head <* revert snap
 
 instance TokenClass T.Text where
     type Token T.Text = Char

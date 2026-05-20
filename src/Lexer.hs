@@ -61,14 +61,14 @@ runSimpleLexer peff initState@(TextStream (sources, _)) =
     ) initState
 
 
-char :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char) => Char -> ParseEff s err es Char
+char :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char) => Char -> ParseEff s err es Char
 char c = satisfy_ (== c) 
 
-newline :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char) => ParseEff s err es ()
+newline :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char) => ParseEff s err es ()
 newline = void $ satisfy_ isNewline 
 
 -- 根据 base 解析一位或多位整数，base 只能是 2, 8, 10, 16，否则永远失败
-digits :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es [Char]
+digits :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es [Char]
 digits = do
     let _isDigit c = case ?base of
             2 -> c == '0' || c == '1'
@@ -86,7 +86,7 @@ bigEnd = foldr (\c acc -> acc * ?base + digitToInt c) 0
 littleEnd :: (?base :: Int) => [Char] -> Int
 littleEnd = foldl (\acc c -> acc * ?base + digitToInt c) 0
 
-parseInt :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es Int
+parseInt :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es Int
 parseInt = withInStack' "parseInt" $ do
     sign <- optional $ try (satisfy_ (\c -> c == '+' || c == '-'))
     ds <- digits
@@ -134,14 +134,14 @@ data LexerConfig s = LexerConfig
     } 
 
 
-skipSpace :: (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es ()
+skipSpace :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es ()
 skipSpace spaceChars = withInStack' "skipSpace" $ void $ takeWhileP1 spaceChars
 
-skipLineComment :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
+skipLineComment :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
 skipLineComment start = withInStack' "skipLineComment" $
     tokens start >> takeWhileP (not . isNewline) >> newline >> return ()
 
-skipBlockComment :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es ()
+skipBlockComment :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, TokensConstraints s) => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es ()
 skipBlockComment start (startCharOfEnd, restEnd) = withInStack' "skipBlockComment" $  do
     tokens start
     let aux = do
@@ -152,7 +152,7 @@ skipBlockComment start (startCharOfEnd, restEnd) = withInStack' "skipBlockCommen
                 Right _ -> return ()
                 Left _ -> aux
     aux
-parseStringLiteral :: (ParseEffFOEWithTokens buf s st err es, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
+parseStringLiteral :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
     => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es (S.Tokens s)
 parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLiteral" $ do
     tokens start
@@ -166,7 +166,7 @@ parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLi
                     aux (acc <> c)
     aux mempty
 
-parseIdentifier :: forall buf s st err es. (ParseEffFOEWithTokens buf s st err es, TShow (S.Token s), Monoid (S.Tokens s)) 
+parseIdentifier :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s)) 
     => (S.Token s -> Bool) -> (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 parseIdentifier isStart isPart = withInStack' "parseIdentifier" $ do
     firstChar <- satisfy_ isStart
@@ -198,6 +198,7 @@ collectJust (Nothing : xs) = collectJust xs
 refineLexcial :: (S.Tokens s -> Maybe k) -> Lexcial s -> Maybe (LexcialR s k)
 refineLexcial _ (NumericLiteral n) = Just $ NumericLiteralR n
 refineLexcial _ (StringLiteral s) = Just $ StringLiteralR s
+refineLexcial _ EOF = Just EOFR
 refineLexcial toKey (Identifier s) = Just $ case toKey s of
     Just k -> KeywordR k
     Nothing -> IdentifierR s
@@ -215,7 +216,8 @@ instance (Eq (S.Tokens s)) => Eq (Lexcial s) where
     StringLiteral s1 == StringLiteral s2 = s1 == s2
     Identifier i1 == Identifier i2 = i1 == i2
     _ == _ = False
-    
+
+deriving instance (Eq (S.Tokens s), Eq k) => Eq (LexcialR s k)
 
 instance (TShow (S.Tokens s)) => TShow (Lexcial s) where
     tshow LineComment = "..."
@@ -227,23 +229,39 @@ instance (TShow (S.Tokens s)) => TShow (Lexcial s) where
     tshow NewLine = "NewLine"
     tshow EOF = ""
 
+instance (TShow (S.Tokens s), TShow k) => TShow (LexcialR s k) where
+    tshow (NumericLiteralR n) = tshow n
+    tshow (StringLiteralR s) = "\"" <> tshow s <> "\""
+    tshow (IdentifierR s) = "ID(" <> tshow s <> ")"
+    tshow (KeywordR k) = "KW(" <> tshow k <> ")"
+    tshow EOFR = ""
+
 instance (TShow (S.Tokens s)) => Show (Lexcial s) where
     show = unpack . tshow
 
-lexer :: (ParseEffFOEWithTokens buf s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
+instance (TShow (S.Tokens s), TShow k) => Show (LexcialR s k) where
+    show = unpack . tshow
+
+lexer' :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
         Hefty.Ask Position :> es, HasSourceViewer es) => 
-    LexerConfig s -> ParseEff s err es [Located (Lexcial s)]
-lexer config = 
+    LexerConfig s -> ParseEff s err es (Located (Lexcial s))
+lexer' config = 
     let ?base = 10 in
-    some $ locatify $ anyOf $ map try [
+    locatify $ anyOf $ map try [
         skipSpace (spaceChars config) >> return Space,
         newline >> return NewLine,
         skipLineComment (startOfLineComment config) >> return LineComment,
         skipBlockComment (startOfBlockComment config) (endOfBlockComment config) >> return BlockComment,
         NumericLiteral <$> parseInt,
         StringLiteral <$> parseStringLiteral (startOfStringLiteral config) (endOfStringLiteral config),
-        Identifier <$> parseIdentifier (startOfIdentifier config) (partOfIdentifier config)
+        Identifier <$> parseIdentifier (startOfIdentifier config) (partOfIdentifier config),
+        eof >> return EOF
     ]
+
+lexer :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
+        Hefty.Ask Position :> es, HasSourceViewer es) => 
+    LexerConfig s -> ParseEff s err es [Located (Lexcial s)]
+lexer = some <$> lexer'
 
 defaultLexerConfig :: (S.Token s ~ Char, IsString (S.Tokens s)) => LexerConfig s
 defaultLexerConfig = LexerConfig
@@ -252,8 +270,10 @@ defaultLexerConfig = LexerConfig
     , endOfBlockComment = ('*', "-")
     , startOfStringLiteral = "\""
     , endOfStringLiteral = ('\"', "")
-    , startOfIdentifier = \c -> isAlpha c || c == '_'
-    , partOfIdentifier = \c -> isAlphaNum c || c == '_'
+    -- , startOfIdentifier = \c -> isAlpha c || c == '_'
+    -- , partOfIdentifier = \c -> isAlphaNum c || c == '_'
+    , startOfIdentifier = \c -> not (c == '-' || c == '"' || isSpace c)
+    , partOfIdentifier = \c -> not (c == '"' || isSpace c)
     , spaceChars = \x -> isSpace x && not (isNewline x)
     }
 

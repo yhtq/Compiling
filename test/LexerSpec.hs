@@ -5,22 +5,15 @@ import Lexer
 import qualified Data.Text as T
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
-import Data.Coerce (coerce)
 import qualified Prettyprinter as PP
 import qualified Prettyprinter.Render.String as PP
 import Utils
 import Data.Text (Text)
-import Printer (Doc)
 import GHC.Exception (throw)
 import Control.Exception (AssertionFailed(AssertionFailed))
 import qualified Data.Vector as V
-import Lexer 
 import Control.Applicative (Alternative(..), optional)
-import Effect (getParserState, tokens, takeWhileP, ParseEff (..), satisfy_)
-import Effect (try, takeWhileP)
-import Control.Monad (void)
-import qualified Stream as S
-import GHC.Unicode (isDigit)
+import Effect (try, getParserState, tokens, takeWhileP, ParseEff (..), satisfy_)
 
 
 intToLittleEnd :: Int -> [Char]

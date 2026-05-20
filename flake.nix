@@ -10,7 +10,7 @@
           inherit system;
           config = { allowBroken = true; };
         };
-        hPkgs = pkgs.haskell.packages.ghc9122;
+        hPkgs = pkgs.haskell.packages.ghc912;
         # haskellPackages = hPkgs.override {
         #   overrides = haskellPackagesNew: haskellPackagesOld: {
         #     hakyll = haskellPackagesOld.hakyll.overrideAttrs(old: {
@@ -29,9 +29,9 @@
           # pkgs.hoogle # Lookup Haskell documentation
           hPkgs.haskell-language-server # LSP server for editor
           hPkgs.implicit-hie # auto generate LSP hie.yaml file from cabal
-          # haskellPackages.heftia-effects 
-          # haskellPackages.text 
-          # haskellPackages.co-log 
+          # haskellPackages.heftia-effects
+          # haskellPackages.text
+          # haskellPackages.co-log
           # stack-wrapped
           pkgs.zlib # External C library needed by some Haskell packages
           # pkgs.gmp

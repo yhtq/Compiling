@@ -17,6 +17,9 @@ data Position = Position
     , column :: Int
     } deriving (Show, Eq)
 
+dummyPos :: Position
+dummyPos = Position 1 1
+
 instance TShow Position where
     tshow (Position l c) = T.pack (show l ++ ":" ++ show c)
 
@@ -28,7 +31,7 @@ advanceColumns :: Int -> Position -> Position
 advanceColumns n (Position l c) = Position l (c + n)
 
 -- 一个带位置信息的值，包含值和它在文本中的起止位置
-newtype Located a = Located (a, (Position, Position)) deriving (Show, Eq, Functor)
+newtype Located a = Located (a, (Position, Position)) deriving (Show, Eq, Functor, TShow)
 
 unlocated :: Located a -> a
 unlocated (Located (a, _)) = a
@@ -87,7 +90,7 @@ runPureStreamInState = ParseEff . Hefty.interpret (
                                 return ""
                 go ts
             S.Current -> asEff getParserState
-            S.Revert buf -> asEff $ putParserState buf
+            S.Revert snap -> asEff $ putParserState snap
         ) . asEff 
 
 -- instance (Monad m) => S.StreamM m TextStream where
@@ -143,8 +146,8 @@ class Into a b where
 instance (Into a b) => Into [a] [b] where
     into = map into
 
--- instance {-# OVERLAPPABLE #-} (a ~ b) => Into a b where
---     into = id
+instance {-# OVERLAPPABLE #-} (a ~ b) => Into a b where
+    into = id
 
 instance {-# OVERLAPPING #-} Into (Located a) a where
     into (Located (a, _)) = a

@@ -97,6 +97,7 @@ test-suite Compiling-test
   main-is: Spec.hs
   other-modules:
       LexerSpec
+      ParserSpec
       Paths_Compiling
   autogen-modules:
       Paths_Compiling

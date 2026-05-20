@@ -1,5 +1,6 @@
 import Test.Hspec
 import LexerSpec 
+import ParserSpec
 import qualified Control.Monad.Hefty as Hefty
 import qualified Control.Monad.Hefty.Except as Hefty
 
@@ -40,6 +41,8 @@ main =
     lexerSpec
     -- it "throws an exception if used with an empty list" $ do
     --   evaluate (head []) `shouldThrow` anyException
+  describe "Parser" $ do
+    bindSpec
   -- describe "read" $ do
   --   it "is inverse to show" $ property $
   --     \x -> (read . show) x `shouldBe` (x :: Int)

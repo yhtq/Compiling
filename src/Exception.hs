@@ -10,6 +10,7 @@ import Control.Monad.Hefty (
 import qualified Data.Tree as T
 import Control.Monad.Hefty.Reader as Hefty
 
+-- 抛出异常的同时捕获一个当前状态作为输出
 type StatefulThrow node s es = (MultiThrow (node, s) :> es, Ask s :> es)
 
 data MultiThrow node :: Effect where

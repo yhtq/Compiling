@@ -1,9 +1,4 @@
 module Main (main) where
-import Polysemy 
-import Text.Megaparsec
-import Polysemy.Embed
-import Polysemy.Internal.Tactics
-import Polysemy.Final
 
 -- data HigherEmbIO z a where
 --   Embed' :: IO a -> HigherEmbIO z a
