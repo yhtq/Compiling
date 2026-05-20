@@ -16,7 +16,7 @@ import Control.Monad.Hefty (
     interpret,
     type (:>),
     type (~>),
-    (&)
+    (&),
  )
 
 import Data.Effect.OpenUnion (KnownLength)

@@ -9,7 +9,7 @@ import qualified Control.Monad.Hefty as Hefty
 import Control.Monad (void)
 import Exception (MultiThrow)
 import Printer
-import Utils (LexerError, TextStream(..), Position(..), Located(..))
+import Utils (LexerError, TextStream(..), Position(..), Located(..), FatalError, runThrowFatalAsFail)
 import qualified Control.Monad.Hefty.Reader as Hefty
 import Text
 import Data.String (IsString)
@@ -23,7 +23,7 @@ type LexerEff es a = ParseEff TextStream LexerError es a
 
 -- effect stack needed for lexing
 type LexerES = '[
-       S.Stream TextStream TextStream, MultiThrow (LexerError, Position), Hefty.Ask Position, SourceViewer, ParserST TextStream
+       S.Stream TextStream TextStream, MultiThrow (LexerError, Position), Hefty.Ask Position, SourceViewer, ParserST TextStream, Hefty.Throw FatalError
     ]
 type SimpleLexer a = ParseEff TextStream LexerError LexerES a
 
@@ -56,8 +56,12 @@ runPositionAsk = ParseEff . Hefty.interpret (\Hefty.Ask -> do
 runSimpleLexer :: SimpleLexer a -> TextStream -> (TextStream, Either Doc a)
 runSimpleLexer peff initState@(TextStream (sources, _)) =
     runPureParseEff $
+    (ParseEff . runThrowFatalAsFail . asEff) $
     runParserST (
-        ((ParseEff . Hefty.runAsk sources . asEff) . runPositionAsk . runStatefulThrowWithLoc . S.runPureStreamInState) peff
+        (
+            (ParseEff . Hefty.runAsk sources . asEff) .
+            runPositionAsk . runStatefulThrowWithLoc . S.runPureStreamInState
+        ) peff
     ) initState
 
 

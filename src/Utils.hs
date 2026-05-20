@@ -7,10 +7,24 @@ import qualified Stream as S
 import Control.Applicative (Alternative(..), optional)
 import Effect
 import qualified Control.Monad.Hefty as Hefty
+import qualified Control.Monad.Hefty.Except as Hefty
 import Control.Monad.Hefty ((:>))
-import Exception
+import qualified Control.Exception as E
 import Text (IsText(..), TShow(..))
 import Prettyprinter (Pretty)
+
+-- 不应出现，不应恢复的错误
+newtype FatalError = FatalError Text deriving (Show, Eq, Semigroup, Monoid, IsText, TShow)
+throwFatal :: (Hefty.Throw FatalError :> es) => Text -> Hefty.Eff es a
+throwFatal = Hefty.throw . FatalError
+
+assertFatal :: (Hefty.Throw FatalError :> es) => Bool -> Text -> Hefty.Eff es ()
+assertFatal cond msg = if cond then return () else throwFatal msg
+
+runThrowFatalAsFail :: Hefty.Eff (Hefty.Throw FatalError : es) a -> Hefty.Eff es a
+runThrowFatalAsFail = Hefty.interpret \case
+    Hefty.Throw (FatalError e) -> error (T.unpack e)
+
 -- 注意行列都是从 1 开始计数
 data Position = Position
     { line :: Int
@@ -60,14 +74,14 @@ runPureStreamInState = ParseEff . Hefty.interpret (
                 let go n (TextStream (ts, pos)) = if n <= 0 then return "" else do
                             case V.uncons ts of
                                 Just (line, rest) -> let (t, r) = T.splitAt n line in
-                                    if T.null r then 
-                                        if n == T.length t then do 
+                                    if T.null r then
+                                        if n == T.length t then do
                                             asEff $ putParserState (TextStream (rest, advanceLine pos))
                                             return t
                                         else do
                                             t' <- go (n - T.length t) (TextStream (rest, advanceLine pos))
                                             return (line <> t')
-                                    else do                            
+                                    else do
                                         asEff $ putParserState (TextStream (V.cons r rest, advanceColumns n pos))
                                         return t
                                 Nothing -> do
@@ -91,7 +105,7 @@ runPureStreamInState = ParseEff . Hefty.interpret (
                 go ts
             S.Current -> asEff getParserState
             S.Revert snap -> asEff $ putParserState snap
-        ) . asEff 
+        ) . asEff
 
 -- instance (Monad m) => S.StreamM m TextStream where
 --     type Token TextStream = Char
@@ -99,11 +113,11 @@ runPureStreamInState = ParseEff . Hefty.interpret (
 --     tokenLen = T.length
 --     uncons (TextStream (ts, pos)) = case V.uncons ts of
 --         Just (line, rest) -> case T.uncons line of
---             Just (c, restLine) -> 
---                 let nextStream = if T.null restLine 
---                     then 
---                         (rest, advanceLine pos) 
---                     else 
+--             Just (c, restLine) ->
+--                 let nextStream = if T.null restLine
+--                     then
+--                         (rest, advanceLine pos)
+--                     else
 --                         (V.cons restLine rest, advanceColumn pos) in
 --                 return $ Just (c, TextStream nextStream)
 --             Nothing -> S.uncons (TextStream (rest, advanceLine pos))
@@ -111,7 +125,7 @@ runPureStreamInState = ParseEff . Hefty.interpret (
 --     takeWhile_ p (TextStream (ts, pos)) = case V.uncons ts of
 --         Just (line, rest) -> let (t, r) = T.span p line in
 --             if T.null r then do
---                 (ts', pos') <- S.takeWhile_ p (TextStream (rest, advanceLine pos)) 
+--                 (ts', pos') <- S.takeWhile_ p (TextStream (rest, advanceLine pos))
 --                 return (t <> ts', pos')
 --             else
 --                 return (t, TextStream (V.cons r rest, advanceColumns (T.length t) pos))
@@ -119,7 +133,7 @@ runPureStreamInState = ParseEff . Hefty.interpret (
 --     takeN_ n (TextStream (ts, pos)) = case V.uncons ts of
 --         Just (line, rest) -> let (t, r) = T.splitAt n line in
 --             if T.null r then do
---                 (ts', pos') <- S.takeN_ (n - T.length line - 1) (TextStream (rest, advanceLine pos)) 
+--                 (ts', pos') <- S.takeN_ (n - T.length line - 1) (TextStream (rest, advanceLine pos))
 --                 return (line <> ts', pos')
 --             else
 --                 return (t, TextStream (V.cons r rest, advanceColumns n pos))
@@ -151,4 +165,3 @@ instance {-# OVERLAPPABLE #-} (a ~ b) => Into a b where
 
 instance {-# OVERLAPPING #-} Into (Located a) a where
     into (Located (a, _)) = a
-

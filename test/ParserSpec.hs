@@ -16,6 +16,7 @@ import qualified Control.Exception.Base as Exception
 import Text (TShow(..), tshow)
 import qualified Stream as S
 import Data.Foldable (Foldable(toList))
+import Data.Maybe (fromJust)
 
 type SimpleParser a = ParseEff LexerStream ParserError (ParserES TextStream ++ LexerES) a
 joinSnd :: (Monad m) => (a, m (m b)) -> (a, m b)
@@ -47,8 +48,21 @@ bindSpec = do
         Located (IdentifierR "one",(Position {line = 1, column = 1},Position {line = 1, column = 3})),
         Located (KeywordR Equal ,(Position {line = 1, column = 5},Position {line = 1, column = 5})),
         Located (NumericLiteralR 1,(Position {line = 1, column = 7},Position {line = 1, column = 7}))]
+    it "complex token stream" $ testParserEq "one = 1" (
+            ParseEff $ sequence [
+                fromJust <$> S.peek,
+                fromJust <$> S.head,
+                fromJust <$> S.head,
+                fromJust <$> S.head
+            ]
+        ) [
+            Located (IdentifierR "one",(Position {line = 1, column = 1},Position {line = 1, column = 3})),
+            Located (IdentifierR "one",(Position {line = 1, column = 1},Position {line = 1, column = 3})),
+            Located (KeywordR Equal ,(Position {line = 1, column = 5},Position {line = 1, column = 5})),
+            Located (NumericLiteralR 1,(Position {line = 1, column = 7},Position {line = 1, column = 7}))]
     it "termVar" $ testParserEq "one" (parseVar @_ @_ @_ @_ @_ @Text) "one"
     it "bind" $ testParserSuccess "one = 1" parseBind
+    it "bind rec" $ testParserSuccess "rec one = 1" parseBind
 
 test :: Keywords -> Text
 test = tshow

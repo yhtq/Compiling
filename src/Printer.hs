@@ -84,5 +84,3 @@ printErrorForestE :: (HasSourceViewer es) => Forest (Doc, (Position, Position)) 
 printErrorForestE forest = do
     sourceCode <- ParseEff ask'_
     return $ printErrorForest sourceCode forest
-
-

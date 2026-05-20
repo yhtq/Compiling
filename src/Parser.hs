@@ -11,15 +11,15 @@ import qualified Control.Monad.Hefty.Input as Hefty
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Foldable (Foldable(toList))
-import Control.Monad.Hefty ((:>), type (++))
+import Control.Monad.Hefty ((:>), type (++), Throw)
 import Control.Monad.Hefty.State (State)
 import qualified Control.Monad.Hefty.State as Hefty
 import qualified Control.Monad.Hefty.Reader as Hefty
 import Data.Functor ((<&>))
 import Control.Applicative ((<|>), optional)
-import Control.Monad (void)
+import Control.Monad (void, replicateM, when)
 import Exception (MultiThrow)
-import Utils (Located (Located), unlocated, Into (into), dummyPos)
+import Utils (Located (Located), unlocated, Into (into), dummyPos, FatalError, throwFatal, assertFatal)
 import Printer (HasSourceViewer, Doc, printErrorForestE)
 import Prettyprinter (pretty, Pretty)
 
@@ -99,7 +99,7 @@ instance S.TokenClass LexerStream where
 
 type Snap = (S.Tokens LexerStream, S.Tokens LexerStream) -- (已读, 待读)
 
-runLexerStream :: (State Snap :> es, Input (S.Token LexerStream) :> es) => ParseEff s err (S.Stream LexerStream Snap : es) a -> ParseEff s1 err1 es a
+runLexerStream :: (State Snap :> es, Input (S.Token LexerStream) :> es, Throw FatalError :> es) => ParseEff s err (S.Stream LexerStream Snap : es) a -> ParseEff s1 err1 es a
 runLexerStream = ParseEff . Hefty.interpret (\case
         S.TakeWhile p -> do
             (readed, unreaded) <- Hefty.get
@@ -121,22 +121,51 @@ runLexerStream = ParseEff . Hefty.interpret (\case
                     Hefty.put (readed Seq.>< partsFromUnreaded, rest)
                     return partsFromUnreaded
         S.TakeN n -> do
-            (readed, unreaded) <- Hefty.get
+            (prevReaded, unreaded) <- Hefty.get
             let (partsFromUnreaded, rest) = Seq.splitAt n unreaded
-            let readedLen = Seq.length readed
+            let readedLen = Seq.length partsFromUnreaded
             if readedLen >= n then do
-                Hefty.put (readed Seq.>< unreaded, rest)
+                -- 如果数量足够，直接返回
+                Hefty.put (prevReaded Seq.>< partsFromUnreaded, rest)
                 return partsFromUnreaded
             else do
                 -- 需要从输入中继续读取
-                let go m = if m < n then do
-                        r <- Hefty.input
-                        go (m + 1) <&> (r Seq.<|)
-                    else return Seq.empty
-                newReaded <- go (Seq.length partsFromUnreaded)
-                Hefty.put (readed Seq.>< partsFromUnreaded Seq.>< newReaded, rest)
-                return (partsFromUnreaded Seq.>< newReaded)
-        S.Revert snap -> Hefty.put snap
+                newlyReaded <- Seq.fromList <$> replicateM (n - readedLen) Hefty.input
+                Hefty.put (prevReaded Seq.>< partsFromUnreaded Seq.>< newlyReaded, Seq.empty)
+                return (partsFromUnreaded Seq.>< newlyReaded)
+        S.Revert snap -> do
+            cur <- Hefty.get
+            when (cur == snap) (return ())
+            let (readed, unreaded) = snap
+            let (readedCur, unreadedCur) = cur
+            -- 如果当前状态和目标状态的readed长度相等，说明目标状态不合法
+            when (Seq.length readed == Seq.length readedCur) (
+                throwFatal "Invalid snapshot: the total length of readed and unreaded in the snapshot is equal"
+                )
+            let maxSeq a b = if Seq.length a >= Seq.length b then do
+                    let (pre, _) = Seq.splitAt (Seq.length b) a
+                    assertFatal (pre == b) "Invalid snapshot: not a prefix"
+                    return a
+                else maxSeq b a
+
+            when (Seq.length readed < Seq.length readedCur) (do
+                -- 说明当前 snap 中阅读部分更多，应当将多余的部分移入 unreaded
+                let (toReaded, toUnreaded) = Seq.splitAt (Seq.length readed) readedCur
+                assertFatal (toReaded == readed) "Invalid snapshot: the readed part of current is not a prefix of the input"
+                newUnreaded <- maxSeq (toUnreaded Seq.>< unreadedCur) unreaded
+                Hefty.put (toReaded, newUnreaded)
+                )
+            when (Seq.length readed > Seq.length readedCur) (do
+                -- 说明当前 snap 中阅读部分更少，应当从目标 readed 部分移入，并舍弃 unreaded 中相应长度部分
+                let (_, toReadedCur) = Seq.splitAt (Seq.length readed) readedCur
+                let (_, asUnreadedCur) = Seq.splitAt (Seq.length toReadedCur) unreadedCur
+                let newReadedCur = readedCur Seq.>< toReadedCur
+                assertFatal (newReadedCur == readed) "Invalid snapshot: the readed part of the snapshot is not a prefix of the current readed part"
+                newUnreaded <- maxSeq (asUnreadedCur Seq.>< unreadedCur) unreaded
+                Hefty.put (newReadedCur, newUnreaded)
+                )
+
+
         S.Current -> Hefty.get
     ) . asEff
 
@@ -261,8 +290,7 @@ parseLam =  withInStack' "When parsing lambda" do
 
 parseBind :: forall snap s st err es. (ParseCons snap s st err es) => ParseEff s err es (Bind TyVar TrmVar)
 parseBind = withInStack' "When parsing bind" do
-    -- rec_ <- optional (parseKeyword @s Rec)
-    let rec_ = Nothing
+    rec_ <- optional (parseKeyword @s Rec)
     var <- parseVar
     parseKeyword Equal
     body <- parseExp
@@ -327,7 +355,8 @@ runStatefulThrowWithSnap p = do
             return $ Left msg
         Right r -> return $ Right r
 
-runSimpleParser :: (Hefty.FOEs es, HasSourceViewer es, S.Tokens s ~ T.Text) => ParseEff s err es (Located (Lexcial s)) -> ParseEff LexerStream ParserError (ParserES s ++ es) a -> ParseEff s err es (Either Doc a)
+runSimpleParser :: (Hefty.FOEs es, HasSourceViewer es, S.Tokens s ~ T.Text, Hefty.Throw FatalError :> es)
+    => ParseEff s err es (Located (Lexcial s)) -> ParseEff LexerStream ParserError (ParserES s ++ es) a -> ParseEff s err es (Either Doc a)
 runSimpleParser _lexer =
     stream' _lexer .
     liftP (Hefty.evalState (Seq.empty, Seq.empty)) .
