@@ -45,7 +45,7 @@ instance (TShow lit, TShow v, TShow typ) => TShow (TypedTerm typ lit v) where
     tshow (LitT l t) = tshow l <> " : " <> tshow t
     tshow (LamT v vt body _) = "\\" <> tshow v <> " -> " <> tshow vt <> ". " <> tshow body
     tshow (AppT f x _) = "(" <> tshow f <> " " <> tshow x <> ")"
-    tshow (OLetT v vt b1 b2 _) = "let " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2  
+    tshow (OLetT v vt b1 b2 _) = "let " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2
     tshow (RLetT v vt b1 b2 _) = "let rec " <> tshow v <> " : " <> tshow vt <> " = " <> tshow b1 <> " in " <> tshow b2
 
 instance (Hashable lit, Hashable v) => Hashable (Term lit v) where
@@ -64,7 +64,7 @@ instance (Hashable lit, Hashable v, Hashable typ) => Hashable (TypedTerm typ lit
     hashWithSalt s (VarT v t) = s `hashWithSalt` (0 :: Int) `hashWithSalt` v `hashWithSalt` t
     hashWithSalt s (LitT l t) = s `hashWithSalt` (1 :: Int) `hashWithSalt` l `hashWithSalt` t
     hashWithSalt s (LamT v vt body bodyt) = s `hashWithSalt` (2 :: Int) `hashWithSalt` v `hashWithSalt` vt `hashWithSalt` body `hashWithSalt` bodyt
-    hashWithSalt s (AppT f x fxt) = s `hashWithSalt` (3 :: Int) `hashWithSalt` f `hashWithSalt` fxt `hashWithSalt` x 
+    hashWithSalt s (AppT f x fxt) = s `hashWithSalt` (3 :: Int) `hashWithSalt` f `hashWithSalt` fxt `hashWithSalt` x
     hashWithSalt s (OLetT v vt b1 b2 lett) = s `hashWithSalt` (4 :: Int) `hashWithSalt` v `hashWithSalt` vt `hashWithSalt` b1 `hashWithSalt` b2 `hashWithSalt` lett
     hashWithSalt s (RLetT v vt b1 b2 lett) = s `hashWithSalt` (5 :: Int) `hashWithSalt` v `hashWithSalt` vt `hashWithSalt` b1 `hashWithSalt` b2 `hashWithSalt` lett
 
@@ -156,7 +156,7 @@ typOfTTerm (AppT _ _ t) = t
 typOfTTerm (OLetT _ _ _ _ t) = t
 typOfTTerm (RLetT _ _ _ _ t) = t
 
-type TypWithMetaVar = Typ TypeLitO Text 
+type TypWithMetaVar = Typ TypeLitO Text
 type TypNoVar = Typ TypeLitO ()
 
 type PartialTypedTerm litT vT lit v = TypedTerm (Maybe (Typ litT vT)) lit v
@@ -178,15 +178,15 @@ annotating = annotating' . Just
 annotating' :: Maybe (Typ litT vT) -> PartialTypedTerm litT vT lit v ->  PartialTypedTerm litT vT lit v
 annotating' mt (VarT v _) = VarT v mt
 annotating' mt (LitT l _) = LitT l mt
-annotating' mt (LamT v vt body _) = LamT v vt (annotating' mt body) mt
-annotating' mt (AppT f x _) = AppT (annotating' mt f) (annotating' mt x) mt
+annotating' mt (LamT v vt body _) = LamT v vt body mt
+annotating' mt (AppT f x _) = AppT f x mt
 annotating' mt (OLetT v vt b1 b2 _) = OLetT v vt b1 b2 mt
 annotating' mt (RLetT v vt b1 b2 _) = RLetT v vt b1 b2 mt
 
 unannotating :: PartialTypedTerm litT vT lit v -> PartialTypedTerm litT vT lit v
 unannotating (VarT v _) = VarT v Nothing
 unannotating (LitT l _) = LitT l Nothing
-unannotating (LamT v vt body _) = LamT v vt (unannotating body) Nothing
-unannotating (AppT f x _) = AppT (unannotating f) (unannotating x) Nothing
+unannotating (LamT v vt body _) = LamT v vt body Nothing
+unannotating (AppT f x _) = AppT f x Nothing
 unannotating (OLetT v vt b1 b2 _) = OLetT v vt b1 b2 Nothing
 unannotating (RLetT v vt b1 b2 _) = RLetT v vt b1 b2 Nothing

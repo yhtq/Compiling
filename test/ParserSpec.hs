@@ -3,7 +3,7 @@ module ParserSpec where
 import GHC.Stack (HasCallStack)
 import Lexer
 import Data.Text (Text)
-import Test.Hspec (Expectation, shouldBe, Spec, it)
+import Test.Hspec (Expectation, shouldBe, Spec, it, shouldNotBe)
 import Effect
 import Utils
 import Parser
@@ -17,24 +17,32 @@ import Text (TShow(..), tshow)
 import qualified Stream as S
 import Data.Foldable (Foldable(toList))
 import Data.Maybe (fromJust)
+import Printer (Doc)
+import Ast
+import Utils (assumeRight, assumeLeft)
 
 type SimpleParser a = ParseEff LexerStream ParserError (ParserES TextStream ++ LexerES) a
 joinSnd :: (Monad m) => (a, m (m b)) -> (a, m b)
 joinSnd (a, mb) = (a, join mb)
 
-testParser :: Text -> SimpleParser a -> (a -> Expectation) -> Expectation
-testParser src parser expected =
+simpleParser :: Text -> SimpleParser a -> (TextStream, Either Doc a)
+simpleParser src parser =
     let initStream = fromText src
         _lexer = lexer' @_ @TextStream @_ @LexerError defaultLexerConfig
         parserStream = runSimpleParser _lexer parser
-        parserFinal = joinSnd $ runSimpleLexer parserStream initStream
-    in
-    case snd parserFinal of
+    in joinSnd $ runSimpleLexer parserStream initStream
+
+testParser :: Text -> SimpleParser a -> (a -> Expectation) -> Expectation
+testParser src parser expected =
+    case snd (simpleParser src parser) of
         Left e -> Exception.throw $ AssertionFailed ((PP.renderString . PP.layoutPretty PP.defaultLayoutOptions) e)
         Right result -> expected result
 
 testParserEq  :: (Eq a, Show a, HasCallStack) => Text -> SimpleParser a -> a -> Expectation
 testParserEq src parser expected = testParser src parser (`shouldBe` expected)
+
+testParserNEq :: (Eq a, Show a, HasCallStack) => Text -> SimpleParser a -> a -> Expectation
+testParserNEq src parser unexpected = testParser src parser (`shouldNotBe` unexpected)
 
 testParserSuccess :: Text -> SimpleParser a -> Expectation
 testParserSuccess src parser = testParser src parser (const $ return ())
@@ -60,9 +68,36 @@ bindSpec = do
             Located (IdentifierR "one",(Position {line = 1, column = 1},Position {line = 1, column = 3})),
             Located (KeywordR Equal ,(Position {line = 1, column = 5},Position {line = 1, column = 5})),
             Located (NumericLiteralR 1,(Position {line = 1, column = 7},Position {line = 1, column = 7}))]
-    it "termVar" $ testParserEq "one" (parseVar @_ @_ @_ @_ @_ @Text) "one"
     it "bind" $ testParserSuccess "one = 1" parseBind
     it "bind rec" $ testParserSuccess "rec one = 1" parseBind
+expSpec :: Spec
+expSpec = do
+    it "number literal" $ testParserSuccess "1" parseExp
+    it "identifier" $ testParserSuccess "one" parseExp
+    it "parenthesized expression" $ testParserSuccess "(1)" parseExp
+    it "function application" $ testParserSuccess "f x" parseExp
+    it "function application with multiple arguments" $ testParserSuccess "f x y" parseExp
+    it "abstraction" $ testParserSuccess "\\x -> x" parseExp
+    it "abstraction apply" $ testParserSuccess "(\\x -> x) 1" parseExp
+
+typSpec :: Spec
+typSpec = do
+    it "int type" $ testParserSuccess "Int" parseTy
+    it "function type" $ testParserSuccess "Int -> Int" parseTy
+    it "function type2" $ testParserEq "Int -> Int -> Int" parseTy (
+            TFun (TLit TInt) (TFun (TLit TInt) (TLit TInt))
+        )
+    it "function type left" $ testParserEq "(Int -> Int) -> Int" parseTy (
+            TFun (TFun (TLit TInt) (TLit TInt)) (TLit TInt)
+        )
+
+
+annotatedSpec :: Spec
+annotatedSpec = do
+    it "annotated expression" $ testParserSuccess "x :: Int" parseExp
+    it "complex annotated expression" $ testParserNEq "((add :: Int -> Int) 1 2) :: Int" parseExp (
+        assumeRight $ snd (simpleParser "(add 1 2)" parseExp)
+        )
 
 test :: Keywords -> Text
 test = tshow

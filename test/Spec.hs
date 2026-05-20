@@ -1,11 +1,11 @@
 import Test.Hspec
-import LexerSpec 
+import LexerSpec
 import ParserSpec
 import qualified Control.Monad.Hefty as Hefty
 import qualified Control.Monad.Hefty.Except as Hefty
 
 throwTest :: Hefty.Eff '[Hefty.Throw String, Hefty.Throw String] ()
-throwTest = Hefty.raise (Hefty.throw "error1") 
+throwTest = Hefty.raise (Hefty.throw "error1")
 
 runThrow1 :: (Hefty.FOEs es) => Hefty.Eff (Hefty.Throw String : es) a -> Hefty.Eff es (Maybe String)
 runThrow1 eff = do
@@ -29,7 +29,7 @@ throwSpec = it "Hefty.Throw should propagate through nested runThrow" $ do
     result2 `shouldBe` Just "runThrow2: error1"
 
 main :: IO ()
-main = 
+main =
   hspec $ parallel $ do
   describe "Hefty.Throw" $ do
     throwSpec
@@ -43,6 +43,9 @@ main =
     --   evaluate (head []) `shouldThrow` anyException
   describe "Parser" $ do
     bindSpec
+    expSpec
+    typSpec
+    annotatedSpec
   -- describe "read" $ do
   --   it "is inverse to show" $ property $
   --     \x -> (read . show) x `shouldBe` (x :: Int)

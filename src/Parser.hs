@@ -138,16 +138,20 @@ runLexerStream = ParseEff . Hefty.interpret (\case
             when (cur == snap) (return ())
             let (readed, unreaded) = snap
             let (readedCur, unreadedCur) = cur
-            -- 如果当前状态和目标状态的readed长度相等，说明目标状态不合法
-            when (Seq.length readed == Seq.length readedCur) (
-                throwFatal "Invalid snapshot: the total length of readed and unreaded in the snapshot is equal"
-                )
             let maxSeq a b = if Seq.length a >= Seq.length b then do
                     let (pre, _) = Seq.splitAt (Seq.length b) a
                     assertFatal (pre == b) "Invalid snapshot: not a prefix"
                     return a
                 else maxSeq b a
-
+            when (Seq.length readed == Seq.length readedCur) (do
+                when (readed /= readedCur) (
+                    -- 如果当前状态和目标状态的readed长度相等，说明目标状态不合法
+                    throwFatal "Invalid snapshot: the total length of readed and unreaded in the snapshot is equal"
+                    )
+                -- 否则，合并 unreaded 部分，并保持 readed 部分不变
+                newlyUnreaded <- maxSeq unreadedCur unreaded
+                Hefty.put (readed, newlyUnreaded)
+                )
             when (Seq.length readed < Seq.length readedCur) (do
                 -- 说明当前 snap 中阅读部分更多，应当将多余的部分移入 unreaded
                 let (toReaded, toUnreaded) = Seq.splitAt (Seq.length readed) readedCur
@@ -197,8 +201,8 @@ type ParseCons snap s st err es = (
         ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Into (S.Token s) LexcialR'
     )
 
-parseKeyword :: forall s snap st err es. (ParseCons snap s st err es) => Keywords -> ParseEff s err es ()
-parseKeyword kw = withInStack' "When parsing keyword" $ void $ satisfy_ (\case
+parseKeywordR :: forall s snap st err es. (ParseCons snap s st err es) => Keywords -> ParseEff s err es ()
+parseKeywordR kw = withInStack' "When parsing keyword" $ void $ satisfy_ (\case
     KeywordR k | k == kw -> True
     _ -> False
     . (into :: S.Token s -> LexcialR')
@@ -207,9 +211,9 @@ parseKeyword kw = withInStack' "When parsing keyword" $ void $ satisfy_ (\case
 parseParened :: (ParseCons snap s st err es) =>
     ParseEff s err es a -> ParseEff s err es a
 parseParened p = do
-    parseKeyword LParen
+    parseKeywordR LParen
     result <- p
-    parseKeyword RParen
+    parseKeywordR RParen
     return result
 
 parseLitTy :: forall s snap st err es. (ParseCons snap s st err es) => ParseEff s err es (Typ TypeLitO TyVar)
@@ -238,7 +242,7 @@ parseTy :: (ParseCons snap s st err es) => ParseEff s err es (Typ TypeLitO TyVar
 parseTy = withInStack' "When parsing type" do
     -- _head 是左公因子
     _head <- parseParened parseTy <|> parseLitTy <|> parseTyVar
-    t <- lookAhead (parseKeyword Arrow)
+    t <- optional $ try (parseKeywordR Arrow)
     case t of
         Just () -> do
             TFun _head <$> parseTy
@@ -273,15 +277,15 @@ type PTerm = PartialTypedTerm TypeLitO TyVar LitO TrmVar
 parseAnno :: (ParseCons snap s st err es) => ParseEff s err es (Anno TyVar TrmVar)
 parseAnno = withInStack' "When parsing annotation" do
     var <- parseVar
-    parseKeyword TypeAnnot
+    parseKeywordR TypeAnnot
     Anno (TrmVar var) <$> parseTy
 
 parseLam :: (ParseCons snap s st err es) => ParseEff s err es PTerm
 parseLam =  withInStack' "When parsing lambda" do
-    parseKeyword Lamb
+    parseKeywordR Lamb
     var <- parseVar
-    opTy <- optional (parseKeyword TypeAnnot >> parseTy)
-    parseKeyword Arrow
+    opTy <- optional (parseKeywordR TypeAnnot >> parseTy)
+    parseKeywordR Arrow
     r <- parseExp
     case typOfTTerm r of
         Just t -> return $ LamT var opTy r (fmap (`TFun` t) opTy)
@@ -290,9 +294,9 @@ parseLam =  withInStack' "When parsing lambda" do
 
 parseBind :: forall snap s st err es. (ParseCons snap s st err es) => ParseEff s err es (Bind TyVar TrmVar)
 parseBind = withInStack' "When parsing bind" do
-    rec_ <- optional (parseKeyword @s Rec)
+    rec_ <- optional (parseKeywordR @s Rec)
     var <- parseVar
-    parseKeyword Equal
+    parseKeywordR Equal
     body <- parseExp
     case rec_ of
         Just () -> return $ RecBind var body
@@ -302,7 +306,7 @@ parseExp :: (ParseCons snap s st err es) => ParseEff s err es PTerm
 parseExp = withInStack' "When parsing expression" do
     _head <- parseLam <|> parseLit <|> fmap varTerm parseVar <|> parseParened parseExp <|> parseLet
     (   do
-        parseKeyword TypeAnnot
+        parseKeywordR TypeAnnot
         ty <- parseTy
         return $ annotating ty _head
         )
@@ -311,9 +315,9 @@ parseExp = withInStack' "When parsing expression" do
     where
         parseLet :: (ParseCons snap s st err es) => ParseEff s err es PTerm
         parseLet = do
-            parseKeyword Let
+            parseKeywordR Let
             bind <- parseBind
-            parseKeyword In
+            parseKeywordR In
             body <- parseExp
             case bind of
                 Bind v e -> return $ OLetT v Nothing e body (typOfTTerm e)

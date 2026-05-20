@@ -3,7 +3,7 @@ module Lexer where
 import qualified Stream as S
 import Effect
 import Control.Applicative (Alternative(..), optional)
-import GHC.Unicode (isOctDigit, isDigit, isHexDigit, isSpace)
+import GHC.Unicode (isOctDigit, isDigit, isHexDigit, isSpace, isAlpha, isAlphaNum)
 import Control.Monad.Hefty ((:>))
 import qualified Control.Monad.Hefty as Hefty
 import Control.Monad (void)
@@ -132,6 +132,7 @@ data LexerConfig s = LexerConfig
         endOfBlockComment :: NonEmptyTokens s, -- 块注释结束标记，如 "*/"
         startOfStringLiteral :: S.Tokens s,
         endOfStringLiteral :: NonEmptyTokens s,
+        keywords :: [S.Tokens s], -- 关键字集合
         startOfIdentifier :: S.Token s -> Bool, -- 标识符首字符集合，如字母和下划线
         partOfIdentifier :: S.Token s -> Bool, -- 标识符非首字符集合，如字母、数字和下划线
         spaceChars :: S.Token s -> Bool -- 需要跳过的空白字符集合
@@ -177,12 +178,17 @@ parseIdentifier isStart isPart = withInStack' "parseIdentifier" $ do
     rest <- takeWhileP isPart
     return $ S.fromList @s [firstChar] <> rest
 
+-- TODO 通过提取前缀提高性能
+parseKeyword :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Tokens s), Eq (S.Tokens s)) => [S.Tokens s] -> ParseEff s err es (S.Tokens s)
+parseKeyword = withInStack' "parseKeyword" . anyOf . map (\k -> (try $ tokens k *> return k))
+
 -- 注意 LineComment 会消耗一个换行符
 data Lexcial s = LineComment
     | BlockComment
     | NumericLiteral Int
     | StringLiteral (S.Tokens s)
     | Identifier (S.Tokens s)
+    | Keyword (S.Tokens s)
     | Space
     | NewLine
     | EOF
@@ -203,9 +209,10 @@ refineLexcial :: (S.Tokens s -> Maybe k) -> Lexcial s -> Maybe (LexcialR s k)
 refineLexcial _ (NumericLiteral n) = Just $ NumericLiteralR n
 refineLexcial _ (StringLiteral s) = Just $ StringLiteralR s
 refineLexcial _ EOF = Just EOFR
-refineLexcial toKey (Identifier s) = Just $ case toKey s of
+refineLexcial toKey (Keyword s) = Just $ case toKey s of
     Just k -> KeywordR k
     Nothing -> IdentifierR s
+refineLexcial _ (Identifier s) = Just $ IdentifierR s
 refineLexcial _ _ = Nothing
 
 refineLexcials :: (S.Tokens s -> Maybe k) -> [Lexcial s] -> [LexcialR s k]
@@ -219,6 +226,7 @@ instance (Eq (S.Tokens s)) => Eq (Lexcial s) where
     NumericLiteral n1 == NumericLiteral n2 = n1 == n2
     StringLiteral s1 == StringLiteral s2 = s1 == s2
     Identifier i1 == Identifier i2 = i1 == i2
+    Keyword k1 == Keyword k2 = k1 == k2
     _ == _ = False
 
 deriving instance (Eq (S.Tokens s), Eq k) => Eq (LexcialR s k)
@@ -231,6 +239,7 @@ instance (TShow (S.Tokens s)) => TShow (Lexcial s) where
     tshow (Identifier s) = "ID(" <> tshow s <> ")"
     tshow Space = "Space"
     tshow NewLine = "NewLine"
+    tshow (Keyword k) = "KW(" <> tshow k <> ")"
     tshow EOF = ""
 
 instance (TShow (S.Tokens s), TShow k) => TShow (LexcialR s k) where
@@ -258,6 +267,8 @@ lexer' config =
         skipBlockComment (startOfBlockComment config) (endOfBlockComment config) >> return BlockComment,
         NumericLiteral <$> parseInt,
         StringLiteral <$> parseStringLiteral (startOfStringLiteral config) (endOfStringLiteral config),
+        -- keyword 优先于 identifier
+        Keyword <$> parseKeyword (keywords config),
         Identifier <$> parseIdentifier (startOfIdentifier config) (partOfIdentifier config),
         eof >> return EOF
     ])
@@ -288,10 +299,11 @@ defaultLexerConfig = LexerConfig
     , endOfBlockComment = ('*', "-")
     , startOfStringLiteral = "\""
     , endOfStringLiteral = ('\"', "")
-    -- , startOfIdentifier = \c -> isAlpha c || c == '_'
-    -- , partOfIdentifier = \c -> isAlphaNum c || c == '_'
-    , startOfIdentifier = \c -> not (c == '-' || c == '"' || isSpace c)
-    , partOfIdentifier = \c -> not (c == '"' || isSpace c)
+    , startOfIdentifier = \c -> isAlpha c || c == '_'
+    , partOfIdentifier = \c -> isAlphaNum c || c == '_'
+    -- , startOfIdentifier = \c -> not (c == '-' || c == '"' || isSpace c)
+    -- , partOfIdentifier = \c -> not (c == '"' || isSpace c)
+    , keywords = ["let", "in", "rec", "=", "\\", "->", "::", "(", ")"]
     , spaceChars = \x -> isSpace x && not (isNewline x)
     }
 

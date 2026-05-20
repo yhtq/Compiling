@@ -12,6 +12,7 @@ import Control.Monad.Hefty ((:>))
 import qualified Control.Exception as E
 import Text (IsText(..), TShow(..))
 import Prettyprinter (Pretty)
+import GHC.Stack (HasCallStack)
 
 -- 不应出现，不应恢复的错误
 newtype FatalError = FatalError Text deriving (Show, Eq, Semigroup, Monoid, IsText, TShow)
@@ -24,6 +25,14 @@ assertFatal cond msg = if cond then return () else throwFatal msg
 runThrowFatalAsFail :: Hefty.Eff (Hefty.Throw FatalError : es) a -> Hefty.Eff es a
 runThrowFatalAsFail = Hefty.interpret \case
     Hefty.Throw (FatalError e) -> error (T.unpack e)
+
+assumeLeft :: (HasCallStack) => Either a b -> a
+assumeLeft (Left a) = a
+assumeLeft (Right _) = error "Expected Left but got Right"
+
+assumeRight :: (HasCallStack) => Either a b -> b
+assumeRight (Right b) = b
+assumeRight (Left _) = error "Expected Right but got Left"
 
 -- 注意行列都是从 1 开始计数
 data Position = Position
