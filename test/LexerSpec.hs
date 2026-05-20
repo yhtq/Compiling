@@ -105,7 +105,7 @@ manySpec2 = it "many' should parse multiple occurrences" $
 
 lexerSpec :: Spec
 lexerSpec = describe "Lexer tests" $ do
-    it "splitAt test" $ T.splitAt 1 "\nello" `shouldBe` ("\n", "ello") 
+    it "splitAt test" $ T.splitAt 1 "\nello" `shouldBe` ("\n", "ello")
     it "fromText test" $ fromText "aaa \n bbb" `shouldBe` TextStream (V.fromList ["aaa \n", " bbb\n"], Position 1 1)
     it "optional test" $ testLexer "bbbbb" (withPos $ optional $ try (char 'a')) (Nothing, V.fromList ["bbbbb\n"], Position 1 1)
     it "tokens test" $ testLexer "abcdb" (withPos $ tokens "abcd") ((), V.fromList ["b\n"], Position 1 5)
@@ -114,8 +114,8 @@ lexerSpec = describe "Lexer tests" $ do
     manySpec1
     manySpec2
     it "simple line comment" $
-        testLexer "-- this is a comment" (withPos $ (tokens "--" >> takeWhileP (not . isNewline) >> newline)) ((), V.fromList [], Position 2 1)
-    it "should parse a simple line comment" $
+        testLexer "-- this is a comment" (withPos (tokens "--" >> takeWhileP (not . isNewline) >> newline)) ((), V.fromList [], Position 2 1)
+    it "should parse a line" $
         testLexer "-- this is a comment\n 100 _a啊121bc" (lexer defaultLexerConfig) [
             Located (LineComment, (Position 1 1, Position 1 21)),
             Located (Space, (Position 2 1, Position 2 1)),

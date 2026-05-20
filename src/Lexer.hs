@@ -3,13 +3,13 @@ module Lexer where
 import qualified Stream as S
 import Effect
 import Control.Applicative (Alternative(..), optional)
-import GHC.Unicode (isOctDigit, isDigit, isHexDigit, isSpace, isAlpha, isAlphaNum)
+import GHC.Unicode (isOctDigit, isDigit, isHexDigit, isSpace)
 import Control.Monad.Hefty ((:>))
 import qualified Control.Monad.Hefty as Hefty
 import Control.Monad (void)
 import Exception (MultiThrow)
 import Printer
-import Utils
+import Utils (LexerError, TextStream(..), Position(..), Located(..))
 import qualified Control.Monad.Hefty.Reader as Hefty
 import Text
 import Data.String (IsString)
@@ -54,18 +54,18 @@ runPositionAsk = ParseEff . Hefty.interpret (\Hefty.Ask -> do
     ) . asEff
 
 runSimpleLexer :: SimpleLexer a -> TextStream -> (TextStream, Either Doc a)
-runSimpleLexer peff initState@(TextStream (sources, _)) = 
-    runPureParseEff $ 
+runSimpleLexer peff initState@(TextStream (sources, _)) =
+    runPureParseEff $
     runParserST (
         ((ParseEff . Hefty.runAsk sources . asEff) . runPositionAsk . runStatefulThrowWithLoc . S.runPureStreamInState) peff
     ) initState
 
 
 char :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char) => Char -> ParseEff s err es Char
-char c = satisfy_ (== c) 
+char c = satisfy_ (== c)
 
 newline :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char) => ParseEff s err es ()
-newline = void $ satisfy_ isNewline 
+newline = void $ satisfy_ isNewline
 
 -- 根据 base 解析一位或多位整数，base 只能是 2, 8, 10, 16，否则永远失败
 digits :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, Monoid (S.Tokens s), ?base :: Int) => ParseEff s err es [Char]
@@ -122,7 +122,7 @@ isNewline c = c == '\n' || c == '\r'
 -- 不允许递归块注释
 type NonEmptyTokens s = (S.Token s, S.Tokens s)
 data LexerConfig s = LexerConfig
-    { 
+    {
         startOfLineComment :: S.Tokens s, -- 行首注释标记，如 "#"
         startOfBlockComment :: S.Tokens s, -- 块注释开始标记，如 "/*"
         endOfBlockComment :: NonEmptyTokens s, -- 块注释结束标记，如 "*/"
@@ -131,7 +131,7 @@ data LexerConfig s = LexerConfig
         startOfIdentifier :: S.Token s -> Bool, -- 标识符首字符集合，如字母和下划线
         partOfIdentifier :: S.Token s -> Bool, -- 标识符非首字符集合，如字母、数字和下划线
         spaceChars :: S.Token s -> Bool -- 需要跳过的空白字符集合
-    } 
+    }
 
 
 skipSpace :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es ()
@@ -152,7 +152,7 @@ skipBlockComment start (startCharOfEnd, restEnd) = withInStack' "skipBlockCommen
                 Right _ -> return ()
                 Left _ -> aux
     aux
-parseStringLiteral :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s)) 
+parseStringLiteral :: (ParseEffFOEWithTokens snap s st err es, S.Token s ~ Char, TokensConstraints s, Monoid (S.Tokens s))
     => S.Tokens s -> NonEmptyTokens s -> ParseEff s err es (S.Tokens s)
 parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLiteral" $ do
     tokens start
@@ -166,7 +166,7 @@ parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLi
                     aux (acc <> c)
     aux mempty
 
-parseIdentifier :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s)) 
+parseIdentifier :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s))
     => (S.Token s -> Bool) -> (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 parseIdentifier isStart isPart = withInStack' "parseIdentifier" $ do
     firstChar <- satisfy_ isStart
@@ -174,8 +174,8 @@ parseIdentifier isStart isPart = withInStack' "parseIdentifier" $ do
     return $ S.fromList @s [firstChar] <> rest
 
 -- 注意 LineComment 会消耗一个换行符
-data Lexcial s = LineComment 
-    | BlockComment 
+data Lexcial s = LineComment
+    | BlockComment
     | NumericLiteral Int
     | StringLiteral (S.Tokens s)
     | Identifier (S.Tokens s)
@@ -242,12 +242,12 @@ instance (TShow (S.Tokens s)) => Show (Lexcial s) where
 instance (TShow (S.Tokens s), TShow k) => Show (LexcialR s k) where
     show = unpack . tshow
 
-lexer' :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
-        Hefty.Ask Position :> es, HasSourceViewer es) => 
+lexer' :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s),
+        Hefty.Ask Position :> es, HasSourceViewer es) =>
     LexerConfig s -> ParseEff s err es (Located (Lexcial s))
-lexer' config = 
+lexer' config =
     let ?base = 10 in
-    locatify $ anyOf $ map try [
+    locatify $ anyOf (map try [
         skipSpace (spaceChars config) >> return Space,
         newline >> return NewLine,
         skipLineComment (startOfLineComment config) >> return LineComment,
@@ -256,12 +256,26 @@ lexer' config =
         StringLiteral <$> parseStringLiteral (startOfStringLiteral config) (endOfStringLiteral config),
         Identifier <$> parseIdentifier (startOfIdentifier config) (partOfIdentifier config),
         eof >> return EOF
-    ]
+    ])
 
-lexer :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s), 
-        Hefty.Ask Position :> es, HasSourceViewer es) => 
+isEOF :: Located (Lexcial s) -> Bool
+isEOF (Located (EOF, _)) = True
+isEOF _ = False
+
+isEOFR :: Located (LexcialR s k) -> Bool
+isEOFR (Located (EOFR, _)) = True
+isEOFR _ = False
+
+lexer :: (ParseEffFOEWithTokens snap s st err es, TokensConstraints s, S.Token s ~ Char, Monoid (S.Tokens s),
+        Hefty.Ask Position :> es, HasSourceViewer es) =>
     LexerConfig s -> ParseEff s err es [Located (Lexcial s)]
-lexer = some <$> lexer'
+lexer config = do
+    next <- lexer' config
+    case next of
+        Located (EOF, _) -> return []
+        _ -> do
+            rest <- lexer config
+            return (next : rest)
 
 defaultLexerConfig :: (S.Token s ~ Char, IsString (S.Tokens s)) => LexerConfig s
 defaultLexerConfig = LexerConfig
@@ -279,9 +293,9 @@ defaultLexerConfig = LexerConfig
 
 -- -- 这里的 int 是向前看的最大标记长度
 -- genLLParsers :: LexerConfig -> (Int, Map Text (LexerEff es ()))
--- genLLParsers config = 
-    
+-- genLLParsers config =
 
--- lexeme :: (ParseEffConstraints s st err es, S.Stream s, S.Token s ~ Char) 
+
+-- lexeme :: (ParseEffConstraints s st err es, S.Stream s, S.Token s ~ Char)
 --         => LexerConfig -> LexerEff es a -> LexerEff es a
 -- lexeme config p = do

@@ -38,13 +38,13 @@ seqLast seq = case Seq.viewr seq of
 --       | (Exp)
 --       | lit
 --       | \ var -> Exp
---       | let Bind in Exp   
+--       | let Bind in Exp
 --       | Exp Exp
 --       | Exp :: Ty
 -- Ty :: var
 --     | Ty -> Ty
 --     | (Ty)
---     | litT 
+--     | litT
 
 data Keywords = Let | In | Rec | Equal | Lamb | Arrow | TypeAnnot | LParen | RParen deriving (Eq, Show)
 
@@ -203,7 +203,7 @@ parseTyVar = withInStack' "When parsing type variable" do
 -- Ty :: var
 --     | Ty -> Ty
 --     | (Ty)
---     | litT 
+--     | litT
 
 parseTy :: (ParseCons snap s st err es) => ParseEff s err es (Typ TypeLitO TyVar)
 parseTy = withInStack' "When parsing type" do
@@ -220,12 +220,12 @@ parseTy = withInStack' "When parsing type" do
 --       | lit
 --       | \ var -> Exp
 --       | \ var :: Ty -> Exp
---       | let Bind in Exp   
+--       | let Bind in Exp
 --       | Exp Exp
 --       | Exp :: Ty
 
-parseTermVar :: forall s snap st err es t. (ParseCons snap s st err es, IsText t) => ParseEff s err es t
-parseTermVar = withInStack' "When parsing var term" $ satisfy'_  (\case
+parseVar :: forall s snap st err es t. (ParseCons snap s st err es, IsText t) => ParseEff s err es t
+parseVar = withInStack' "When parsing var term" $ satisfy'_  (\case
         IdentifierR s ->  Just (fromText s)
         _ -> Nothing
         . (into :: S.Token s -> LexcialR')
@@ -243,14 +243,14 @@ type PTerm = PartialTypedTerm TypeLitO TyVar LitO TrmVar
 
 parseAnno :: (ParseCons snap s st err es) => ParseEff s err es (Anno TyVar TrmVar)
 parseAnno = withInStack' "When parsing annotation" do
-    var <- parseTermVar
+    var <- parseVar
     parseKeyword TypeAnnot
     Anno (TrmVar var) <$> parseTy
 
 parseLam :: (ParseCons snap s st err es) => ParseEff s err es PTerm
 parseLam =  withInStack' "When parsing lambda" do
     parseKeyword Lamb
-    var <- parseTermVar
+    var <- parseVar
     opTy <- optional (parseKeyword TypeAnnot >> parseTy)
     parseKeyword Arrow
     r <- parseExp
@@ -263,7 +263,7 @@ parseBind :: forall snap s st err es. (ParseCons snap s st err es) => ParseEff s
 parseBind = withInStack' "When parsing bind" do
     -- rec_ <- optional (parseKeyword @s Rec)
     let rec_ = Nothing
-    var <- parseTermVar
+    var <- parseVar
     parseKeyword Equal
     body <- parseExp
     case rec_ of
@@ -272,7 +272,7 @@ parseBind = withInStack' "When parsing bind" do
 
 parseExp :: (ParseCons snap s st err es) => ParseEff s err es PTerm
 parseExp = withInStack' "When parsing expression" do
-    _head <- parseLam <|> parseLit <|> fmap varTerm parseTermVar <|> parseParened parseExp <|> parseLet
+    _head <- parseLam <|> parseLit <|> fmap varTerm parseVar <|> parseParened parseExp <|> parseLet
     (   do
         parseKeyword TypeAnnot
         ty <- parseTy

@@ -75,7 +75,7 @@ deriving instance Monad (ParseEff s err es)
 
 -- withCallStack :: (HasParserCallStack es) => CallStack -> ParseEff s err es a -> ParseEff s err es a
 -- withCallStack cs p = do
---     pushCallStack cs 
+--     pushCallStack cs
 --     result <- p
 --     _ <- popCallStack
 --     return result
@@ -100,7 +100,7 @@ putParserState s = ParseEff $ Hefty.perform (ParserST (Hefty.Put s))
 {-# INLINE runParserST #-}
 runParserST :: (FOEs es) => ParseEff s err (ParserST s : es) a -> s -> ParseEff s err es (s, a)
 runParserST (ParseEff p) initState = ParseEff $ Hefty.runState initState (
-        interpret (\(ParserST e) -> 
+        interpret (\(ParserST e) ->
             Hefty.perform e
         ) (Hefty.raiseUnder p)
     )
@@ -113,7 +113,7 @@ runPureParseEff (ParseEff p) = Hefty.runPure p
 
 {-# INLINE raise #-}
 raise :: ParseEff s1 err1 es a -> ParseEff s2 err2 (e : es) a
-raise (ParseEff p) = ParseEff $ Hefty.raise p 
+raise (ParseEff p) = ParseEff $ Hefty.raise p
 
 {-# INLINE raiseUnder #-}
 raiseUnder :: ParseEff s1 err1 (e0 : es) a -> ParseEff s2 err2 (e0 : e1 : es) a
@@ -144,8 +144,8 @@ withInStack' errText = withInStack (fromText errText)
 
 {-# INLINE runThrow #-}
 runThrow :: (FOEs es) => ParseEff s err (E.MultiThrow node : es) a -> ParseEff s err es (Either (T.Forest node) a)
-runThrow = ParseEff . 
-    Hefty.interpretBy (pure . Right) (\e _ -> 
+runThrow = ParseEff .
+    Hefty.interpretBy (pure . Right) (\e _ ->
         pure $ Left (E.translateToTree e)
     ) . asEff
 
@@ -172,7 +172,7 @@ compact1 = ParseEff . Hefty.translate id . asEff
 observing :: (FOEs es, E.MultiThrow node :> es) => ParseEff s err es a -> ParseEff s err es (Either (T.Forest node) a)
 observing = ParseEff . Hefty.interposeBy (pure . Right) (\e _ -> pure $ Left (E.translateToTree e)) . asEff
 
-{-# RULES 
+{-# RULES
     "try observing" forall p. try (observing p) = observing p
 #-}
 
@@ -194,7 +194,7 @@ _alter (ParseEff p1) (ParseEff p2) = ParseEff $ E.alter p1 p2
 --     s <- ParseEff S.current
 --     next <- withInStack' "observing" $ observing' p
 --     case next of
---         Left _ -> 
+--         Left _ ->
 --             ParseEff $ S.revert s >>
 --             return []
 --         Right r -> (r :) <$> many' p
@@ -206,7 +206,7 @@ _many p = withInStack' "many" $ do
     next <- withInStack' "observing" $ observing p
     case next of
         Left _ -> do
-            ParseEff $ S.revert s 
+            ParseEff $ S.revert s
             return []
         Right r -> (r :) <$> _many p
 
@@ -219,30 +219,30 @@ instance (ParseEffFOEConstraints snap s st err es) => Alternative (ParseEff s er
     {-# INLINE many #-}
     many = _many
 
-{-# RULES 
+{-# RULES
 "try empty" try _empty = _empty
 "many empty" many _empty = return []
 #-}
-{-# RULES 
+{-# RULES
 "alter empty" forall p. _alter _empty p = p
 "empty alter" forall p. _alter p _empty = p
 #-}
-{-# RULES 
+{-# RULES
 "alter observing" forall p1 p2. _alter (observing p1) p2 = observing p1
 "alter many" forall p1 p2. _alter (_many p1) p2 = _many p1
 #-}
-{-# RULES 
+{-# RULES
 "try many" forall p. try (_many p) = _many p
 #-}
 
 {-# INLINE compact #-}
 compact :: forall es. (KnownLength es) => Eff (es ++ es) ~> Eff es
 compact = Hefty.interprets @es (
-            CE.Eff . Hefty.liftFree 
+            CE.Eff . Hefty.liftFree
         )
 
 {-# INLINE (<>+) #-}
-(<>+) :: forall s err a b es1 es2. 
+(<>+) :: forall s err a b es1 es2.
             (KnownLength es1)
         => ParseEff s err es1 a -> ParseEff s err es2 b -> ParseEff s err (es1 ++ es2) (a, b)
 (<>+) (ParseEff p1) (ParseEff p2) = do
@@ -252,12 +252,12 @@ compact = Hefty.interprets @es (
 
 
 {-# INLINE (<|>+) #-}
-(<|>+) :: forall snap s st err a b es1 es2. 
+(<|>+) :: forall snap s st err a b es1 es2.
             (KnownLength es1, ParseEffConstraints snap s st err (es1 ++ es2), FOEs (es1 ++ es2))
         => ParseEff s err es1 a -> ParseEff s err es2 b -> ParseEff s err (es1 ++ es2) (Either a b)
 (<|>+) (ParseEff p1) (ParseEff p2) = do
-    catch 
-        (ParseEff $ (Hefty.raiseSuffix @es2) (Left <$> p1)) 
+    catch
+        (ParseEff $ (Hefty.raiseSuffix @es2) (Left <$> p1))
         (\_ -> ParseEff $ (Hefty.raisePrefix @es1) (Right <$> p2))
 
 {-# INLINE[2] lookAhead #-}
@@ -270,8 +270,8 @@ lookAhead p = do
         Left _ -> return Nothing
         Right r -> return (Just r)
 
-{-# RULES 
-    "satisfy or" forall p1 p2. satisfy p1 <|> satisfy p2 = satisfy (\t -> p1 t || p2 t) 
+{-# RULES
+    "satisfy or" forall p1 p2. satisfy p1 <|> satisfy p2 = satisfy (\t -> p1 t || p2 t)
 #-}
 
 -- 以下单个字符的接口在失败时都不会消耗流，因此不需要配合 `try` 使用
@@ -280,14 +280,14 @@ lookAhead p = do
 satisfy :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s)) => (Maybe (S.Token s) -> Bool) -> ParseEff s err es (Maybe (S.Token s))
 satisfy p = withInStack' "satisfy" $ do
     h <- ParseEff S.peek
-    if p h then 
+    if p h then
         ParseEff S.head >>
-        return h 
-    else 
+        return h
+    else
         throw (fromText ("Unexpected token: " <> tshow h))
 
-{-# RULES 
-    "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t) 
+{-# RULES
+    "satisfy_ or" forall p1 p2. satisfy_ p1 <|> satisfy_ p2 = satisfy_ (\t -> p1 t || p2 t)
 #-}
 
 -- satisfy 系列函数失败时不会有任何消耗
@@ -298,7 +298,7 @@ satisfy_ :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s)) => (S.To
 satisfy_ p = withInStack' "satisfy" $ do
     h <- ParseEff S.peek
     case h of
-        Just t | p t -> 
+        Just t | p t ->
             ParseEff S.head >>
             return t
         _ -> throw (fromText ("Unexpected token: " <> tshow h))
@@ -308,7 +308,7 @@ satisfy'_ :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s)) => (S.T
 satisfy'_ p = withInStack' "satisfy_" $ do
     h <- ParseEff S.peek
     case h of
-        Just t | Just a <- p t -> 
+        Just t | Just a <- p t ->
             ParseEff S.head >>
             return a
         _ -> throw (fromText ("Unexpected token: " <> tshow h))
@@ -318,7 +318,7 @@ satisfy'_ p = withInStack' "satisfy_" $ do
 anyOf :: (ParseEffFOEConstraints snap s st err es) => [ParseEff s err es a] -> ParseEff s err es a
 anyOf = asum
 
-{-# RULES 
+{-# RULES
 "try satisfy" forall p. try (satisfy p) = satisfy p
 "try satisfy_" forall p. try (satisfy_ p) = satisfy_ p
 "try eof" try eof = eof
@@ -330,36 +330,36 @@ anyOf = asum
 eof :: (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s)) => ParseEff s err es ()
 eof = withInStack' "eof" $ do
     hs <- ParseEff $ S.peek
-    if isNothing $ hs then 
-        void $ ParseEff S.head  
+    if isNothing $ hs then
+        void $ ParseEff S.head
     else throw $ fromText ("Expected end of input, but got " <> tshow hs)
 
 -- 注意 tokens 接口在失败时会消耗流中的部分 token，因此在使用时需要注意回溯问题，建议配合 `try` 使用
 {-# INLINE tokens #-}
 tokens :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es, TokensConstraints s) => S.Tokens s -> ParseEff s err es ()
 tokens ts = withInStack' "tokens" $ do
-    heads <- ParseEff $ S.takeN (S.tokenLen @s ts) 
+    heads <- ParseEff $ S.takeN (S.tokenLen @s ts)
     if heads == ts then do
         return ()
     else
         throw $ fromText ("Expected " <> tshow ts <> ", but got " <> tshow heads)
 
-{-# RULES 
+{-# RULES
     "many satisfy" forall p. many (satisfy_ p) = takeWhileP' p
 #-}
 
 {-# INLINE takeWhileP #-}
 takeWhileP :: (ParseEffFOEWithTokens snap s st err es) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
 takeWhileP p = withInStack' "takeWhileP" $ do
-    ParseEff $ S.takeWhile p 
+    ParseEff $ S.takeWhile p
 {-# INLINE takeWhileP' #-}
 takeWhileP' :: forall snap s st err es. (ParseEffFOEWithTokens snap s st err es) => (S.Token s -> Bool) -> ParseEff s err es [S.Token s]
 takeWhileP' p = fmap (S.toList @s) (takeWhileP p)
 
 {-# INLINE takeWhileP1 #-}
 takeWhileP1 :: forall snap s st err es.  (ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Monoid (S.Tokens s)) => (S.Token s -> Bool) -> ParseEff s err es (S.Tokens s)
-takeWhileP1 p = do 
-    h <- satisfy_ p 
+takeWhileP1 p = do
+    h <- satisfy_ p
     t <- takeWhileP p
     return $ S.fromList @s [h] <> t
 
@@ -373,11 +373,10 @@ stream :: (Hefty.Suffix es es') =>
     ParseEff s err es a -> ParseEff s1 err1 (Input a : es') x -> Eff es' x
 stream p = Hefty.interpret (
         \Hefty.Input -> Hefty.raises $ asEff p
-    ) . asEff     
+    ) . asEff
 
 
 {-# INLINE stream' #-}
 stream' :: (Hefty.Suffix es es') =>
     ParseEff s err es a -> ParseEff s1 err1 (Input a : es') x -> ParseEff s err es' x
-stream' p q = ParseEff (stream p q) 
-
+stream' p q = ParseEff (stream p q)

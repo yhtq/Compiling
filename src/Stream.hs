@@ -16,7 +16,7 @@ class TokenClass s where
     fromList :: [Token s] -> Tokens s
     toList :: Tokens s -> [Token s]
 
--- snap 是某种暂存状态，可以用来回溯 Stream 
+-- snap 是某种暂存状态，可以用来回溯 Stream
 data Stream s snap :: Effect where
     TakeWhile :: (Token s -> Bool) -> Stream s snap f (Tokens s)
     TakeN :: Int -> Stream s snap f (Tokens s)
@@ -28,6 +28,7 @@ Hefty.makeEffectF ''Stream
 
 
 {-# INLINE head #-}
+-- 消耗一个 token 并返回
 head :: forall s snap es. (TokenClass s, Stream s snap :> es) => Hefty.Eff es (Maybe (Token s))
 head = do
     r <- takeN 1
@@ -74,7 +75,7 @@ instance TokenClass T.Text where
 
 
 -- isEmpty :: StreamM m s => s -> m Bool
--- isEmpty = fmap isNothing . uncons 
+-- isEmpty = fmap isNothing . uncons
 
 -- instance (Applicative m) => StreamM m (V.Vector a) where
 --     {-# INLINE uncons #-}
@@ -108,4 +109,3 @@ instance TokenClass T.Text where
 --     takeN_ n s = let (t, r) = T.splitAt n s in pure (t, r)
 --     fromList = T.pack
 --     toList = T.unpack
- 
