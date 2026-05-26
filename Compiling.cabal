@@ -34,6 +34,7 @@ library
       Printer
       Stream
       Text
+      TypeChecker
       Utils
   other-modules:
       Paths_Compiling
@@ -98,6 +99,7 @@ test-suite Compiling-test
   other-modules:
       LexerSpec
       ParserSpec
+      TypeCheckerSpec
       Paths_Compiling
   autogen-modules:
       Paths_Compiling

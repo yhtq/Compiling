@@ -19,7 +19,6 @@ import Data.Foldable (Foldable(toList))
 import Data.Maybe (fromJust)
 import Printer (Doc)
 import Ast
-import Utils (assumeRight, assumeLeft)
 
 type SimpleParser a = ParseEff LexerStream ParserError (ParserES TextStream ++ LexerES) a
 joinSnd :: (Monad m) => (a, m (m b)) -> (a, m b)
@@ -97,6 +96,18 @@ annotatedSpec = do
     it "annotated expression" $ testParserSuccess "x :: Int" parseExp
     it "complex annotated expression" $ testParserNEq "((add :: Int -> Int) 1 2) :: Int" parseExp (
         assumeRight $ snd (simpleParser "(add 1 2)" parseExp)
+        )
+
+letSpec :: Spec
+letSpec = do
+    it "let expression" $ testParserSuccess "let x = 1 in x" parseExp
+    it "let rec expression" $ testParserSuccess "let rec f = \\x -> ite (Eq x 0) 1 (mul x (f (sub x 1))) in f 5" parseExp
+    it "nested let" $ testParserEq "let rec x = 1 in let y = 2 in add x y" parseExp (
+        RLetT (TrmVar "x") Nothing (LitT (LInt 1) Nothing) (
+            OLetT (TrmVar "y") Nothing (LitT (LInt 2) Nothing) (
+                AppT (VarT (TrmVar "add") Nothing) (AppT (VarT (TrmVar "x") Nothing) (VarT (TrmVar "y") Nothing) Nothing) Nothing
+            ) Nothing)
+        Nothing
         )
 
 test :: Keywords -> Text

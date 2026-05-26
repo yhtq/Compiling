@@ -1,4 +1,4 @@
-module Text 
+module Text
 (
     IsText(..),
     TShow(..),
@@ -77,4 +77,3 @@ runFreshVarGen = Hefty.reinterpret $ \case
         go
 runFreshVarGen' ::  (Hefty.FOEs es, Hashable t, Ord t, IsText t) => Hefty.Eff (FreshVarGen t : es) a -> Hefty.Eff es a
 runFreshVarGen' = fmap snd . Hefty.runState (0, mempty) . runFreshVarGen
-            

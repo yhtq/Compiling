@@ -187,7 +187,7 @@ newtype TyVar = TyVar T.Text
     deriving (Eq, Show, TShow, IsText)
 
 newtype TrmVar = TrmVar T.Text
-    deriving (Eq, Show, TShow, IsText)
+    deriving (Eq, Ord, Show, TShow, IsText)
 
 data Bind vt v = Bind v (Expr vt v)
     | RecBind v (Expr vt v)
@@ -201,6 +201,7 @@ type ParseCons snap s st err es = (
         ParseEffFOEWithTokens snap s st err es, TShow (S.Token s), Into (S.Token s) LexcialR'
     )
 
+-- should consume if failure
 parseKeywordR :: forall s snap st err es. (ParseCons snap s st err es) => Keywords -> ParseEff s err es ()
 parseKeywordR kw = withInStack' "When parsing keyword" $ void $ satisfy_ (\case
     KeywordR k | k == kw -> True
@@ -257,6 +258,7 @@ parseTy = withInStack' "When parsing type" do
 --       | Exp Exp
 --       | Exp :: Ty
 
+-- should not consume if failure
 parseVar :: forall s snap st err es t. (ParseCons snap s st err es, IsText t) => ParseEff s err es t
 parseVar = withInStack' "When parsing var term" $ satisfy'_  (\case
         IdentifierR s ->  Just (fromText s)
@@ -275,7 +277,7 @@ parseLit = withInStack' "When parsing literal" $ satisfy'_  (\case
 type PTerm = PartialTypedTerm TypeLitO TyVar LitO TrmVar
 
 parseAnno :: (ParseCons snap s st err es) => ParseEff s err es (Anno TyVar TrmVar)
-parseAnno = withInStack' "When parsing annotation" do
+parseAnno = try $ withInStack' "When parsing annotation" do
     var <- parseVar
     parseKeywordR TypeAnnot
     Anno (TrmVar var) <$> parseTy
@@ -314,7 +316,7 @@ parseExp = withInStack' "When parsing expression" do
         <|> return (unannotating _head)
     where
         parseLet :: (ParseCons snap s st err es) => ParseEff s err es PTerm
-        parseLet = do
+        parseLet = withInStack' "When parsing let expression" do
             parseKeywordR Let
             bind <- parseBind
             parseKeywordR In
