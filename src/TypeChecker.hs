@@ -53,6 +53,7 @@ builtinPrimitiveTypes = [
     ("subInt",    TFun (TLit TInt) (TFun (TLit TInt) (TLit TInt))),
     ("mulInt",    TFun (TLit TInt) (TFun (TLit TInt) (TLit TInt))),
     ("eqInt",     TFun (TLit TInt) (TFun (TLit TInt) (TLit TInt))),
+    ("ite",       TFun (TLit TInt) (TFun (TLit TInt) (TFun (TLit TInt) (TLit TInt)))),
     ("concatStr", TFun (TLit TString) (TFun (TLit TString) (TLit TString))),
     ("intToStr",  TFun (TLit TInt) (TLit TString))
     ]

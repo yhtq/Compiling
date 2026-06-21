@@ -166,7 +166,7 @@ parseStringLiteral start (startCharOfEnd, restEnd) = withInStack' "parseStringLi
             _ <- char startCharOfEnd
             next <- try $ observing (tokens restEnd)
             case next of
-                Right _ -> return acc
+                Right _ -> return (acc <> c)
                 Left _ -> do
                     aux (acc <> c)
     aux mempty
@@ -212,7 +212,9 @@ refineLexcial _ EOF = Just EOFR
 refineLexcial toKey (Keyword s) = Just $ case toKey s of
     Just k -> KeywordR k
     Nothing -> IdentifierR s
-refineLexcial _ (Identifier s) = Just $ IdentifierR s
+refineLexcial toKey (Identifier s) = Just $ case toKey s of
+    Just k -> KeywordR k
+    Nothing -> IdentifierR s
 refineLexcial _ _ = Nothing
 
 refineLexcials :: (S.Tokens s -> Maybe k) -> [Lexcial s] -> [LexcialR s k]
@@ -267,9 +269,11 @@ lexer' config =
         skipBlockComment (startOfBlockComment config) (endOfBlockComment config) >> return BlockComment,
         NumericLiteral <$> parseInt,
         StringLiteral <$> parseStringLiteral (startOfStringLiteral config) (endOfStringLiteral config),
-        -- keyword 优先于 identifier
-        Keyword <$> parseKeyword (keywords config),
+        -- identifier 优先于 keyword，避免 keyword 被作为 identifier 前缀误匹配
+        -- 例如 intToStr 不会被误拆为 KW(in) + ID(tToStr)
+        -- 标识符类 keyword (let/in/rec) 由 refineLexcial 在词法分析后转换
         Identifier <$> parseIdentifier (startOfIdentifier config) (partOfIdentifier config),
+        Keyword <$> parseKeyword (keywords config),
         eof >> return EOF
     ])
 

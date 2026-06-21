@@ -1,4 +1,26 @@
-module Parser where
+module Parser (
+    Keywords(..),
+    LexcialR',
+    ParserError(..),
+    ParserES,
+    LexerStream,
+    parseExp,
+    parseBind,
+    parseAnno,
+    parseTy,
+    parseProg,
+    TopLevel(..),
+    runSimpleParser,
+    simpleParse,
+    Snap,
+    TrmVar(..),
+    TyVar(..),
+    PTerm,
+    Expr,
+    Bind(..),
+    Anno(..),
+    __toKeyword,
+) where
 import Ast
 import Lexer
 import Effect
@@ -17,9 +39,10 @@ import qualified Control.Monad.Hefty.State as Hefty
 import qualified Control.Monad.Hefty.Reader as Hefty
 import Data.Functor ((<&>))
 import Control.Applicative ((<|>), optional)
-import Control.Monad (void, replicateM, when)
+import Control.Monad (void, replicateM, when, join)
 import Exception (MultiThrow)
-import Utils (Located (Located), unlocated, Into (into), dummyPos, FatalError, throwFatal, assertFatal)
+import qualified Utils as U
+import Utils (Located (Located), unlocated, Into (into), dummyPos, FatalError, throwFatal, assertFatal, TextStream(..), LexerError(..))
 import Printer (HasSourceViewer, Doc, printErrorForestE)
 import Prettyprinter (pretty, Pretty)
 
@@ -314,16 +337,40 @@ parseExp = withInStack' "When parsing expression" do
         )
         <|> fmap unannotating (appTerm _head <$> parseExp)
         <|> return (unannotating _head)
-    where
-        parseLet :: (ParseCons snap s st err es) => ParseEff s err es PTerm
-        parseLet = withInStack' "When parsing let expression" do
-            parseKeywordR Let
-            bind <- parseBind
-            parseKeywordR In
-            body <- parseExp
-            case bind of
-                Bind v e -> return $ OLetT v Nothing e body (typOfTTerm e)
-                RecBind v e -> return $ RLetT v Nothing e body (typOfTTerm e)
+  where
+    parseLet :: (ParseCons snap s st err es) => ParseEff s err es PTerm
+    parseLet = withInStack' "When parsing let expression" $ do
+        parseKeywordR Let
+        rec_ <- optional (parseKeywordR Rec)
+        var <- parseVar
+        -- 可选类型注解：var :: Ty
+        vt <- optional (try $ parseKeywordR TypeAnnot >> parseTy)
+        parseKeywordR Equal
+        body <- parseExp
+        parseKeywordR In
+        body2 <- parseExp
+        case rec_ of
+            Just () -> return $ RLetT var vt body body2 (typOfTTerm body)
+            Nothing -> return $ OLetT var vt body body2 (typOfTTerm body)
+
+-- | 顶层定义：可以是类型注解或绑定
+data TopLevel vt v = TLAnno (Anno vt v) | TLBind (Bind vt v)
+    deriving (Eq, Show)
+
+instance (TShow vt, TShow v) => TShow (TopLevel vt v) where
+    tshow (TLAnno a) = tshow a
+    tshow (TLBind b) = tshow b
+
+-- | 解析一个顶层定义（注解或绑定）
+parseTopLevel :: forall snap s st err es. (ParseCons snap s st err es) => ParseEff s err es (TopLevel TyVar TrmVar)
+parseTopLevel = withInStack' "When parsing top-level definition" $
+    (TLAnno <$> try parseAnno) <|> (TLBind <$> parseBind)
+
+-- | 解析完整程序：一个或多个顶层定义
+parseProg :: forall snap s st err es. (ParseCons snap s st err es) => ParseEff s err es [TopLevel TyVar TrmVar]
+parseProg = withInStack' "When parsing program" $ many' parseTopLevel
+  where
+    many' p = (:) <$> p <*> many' p <|> return []
 
 newtype ParserError = ParserError T.Text deriving (Show, Eq, IsText, TShow, Pretty)
 
@@ -371,3 +418,13 @@ runSimpleParser _lexer =
     refineLexcialInput .
     runLexerStream
     where ?toKeyword = __toKeyword
+
+-- | Convenience: source text → parsed result via lexer + parser
+simpleParse :: forall a.
+       T.Text -> ParseEff LexerStream ParserError (ParserES TextStream ++ LexerES) a -> (TextStream, Either Doc a)
+simpleParse src parser =
+    let initStream = U.fromText src
+        _lexer = lexer' @_ @TextStream @_ @LexerError defaultLexerConfig
+        parserStream = runSimpleParser _lexer parser
+        (ts, result) = runSimpleLexer parserStream initStream
+    in  (ts, join result)

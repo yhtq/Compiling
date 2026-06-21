@@ -28,6 +28,7 @@ library
       Ast
       Effect
       Exception
+      Interpreter
       Lexer
       Lib
       Parser
@@ -97,6 +98,7 @@ test-suite Compiling-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      InterpreterSpec
       LexerSpec
       ParserSpec
       TypeCheckerSpec

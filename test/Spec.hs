@@ -2,6 +2,7 @@ import Test.Hspec
 import LexerSpec
 import ParserSpec
 import TypeCheckerSpec
+import InterpreterSpec
 import qualified Control.Monad.Hefty as Hefty
 import qualified Control.Monad.Hefty.Except as Hefty
 
@@ -55,3 +56,13 @@ main =
     recLetSpec
     complexSpec
     integrationSpec
+  describe "Interpreter" $ do
+    literalISpec
+    lambdaISpec
+    applicationISpec
+    builtinISpec
+    letISpec
+    lazyISpec
+    recLetISpec
+    errorISpec
+    integrationISpec
